@@ -14,7 +14,7 @@ setupRouter()
 app.use(router)
 
 //注册所有图标
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+for (const [key, component] of (Object as any).entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
 //element国际化

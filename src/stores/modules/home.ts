@@ -1,27 +1,45 @@
 import { defineStore } from 'pinia'
-import { getHomeData, getDetailData } from '@/api/home'
-import type { apiType } from '../types'
+import { getCalendarData, getHotAnime, getSubjectDetail, getEpisodes } from '@/api/home'
+import type { IBangumiSubject, IBangumiEpisode, ICalendarItem } from '@/api/types'
 import localCache from '@/utils/cache'
-export const useHomeStore = defineStore('home', () => {
-  const hots = ref<apiType.IAnime[]>()
-  const banners = ref<apiType.IAnime[]>()
-  const latest = ref<apiType.IAnime[]>([])
 
-  const animeDetail = ref<apiType.IAnimeDetail>({ anime_id: [], title: '' })
+export const useHomeStore = defineStore('home', () => {
+  const hots = ref<IBangumiSubject[]>([])
+  const latest = ref<IBangumiSubject[]>([])
+  const calendar = ref<ICalendarItem[]>([])
+
+  const animeDetail = ref<IBangumiSubject | null>(null)
+  const episodes = ref<IBangumiEpisode[]>([])
   const anime_id = ref<number>()
 
   async function homeDataAction() {
-    const homeDataResult = await getHomeData()
-    hots.value = homeDataResult.hots
-    banners.value = homeDataResult.banner
-    latest.value = homeDataResult.latest
+    const [calendarData, hotData] = await Promise.all([getCalendarData(), getHotAnime()])
+
+    calendar.value = calendarData
+
+    const today = new Date().getDay()
+    const weekdayId = today === 0 ? 7 : today
+    const todayAnime = calendarData.find((item) => item.weekday.id === weekdayId)
+    latest.value = todayAnime?.items ?? []
+
+    hots.value = hotData.data ?? []
   }
 
-  async function detailDataAction(id: string) {
-    const detailDataResult = await getDetailData(id)
-    localCache.setCache('anime_id', detailDataResult.anime_id[0].anime_id)
-    anime_id.value = detailDataResult.anime_id[0].anime_id
-    animeDetail.value = detailDataResult
+  const detailLoading = ref(false)
+
+  async function detailDataAction(id: number) {
+    animeDetail.value = null
+    episodes.value = []
+    detailLoading.value = true
+    try {
+      const [detail, episodeData] = await Promise.all([getSubjectDetail(id), getEpisodes(id)])
+      animeDetail.value = detail
+      episodes.value = (episodeData.data ?? []).filter((ep) => ep.type === 0)
+      anime_id.value = id
+      localCache.setCache('anime_id', id)
+    } finally {
+      detailLoading.value = false
+    }
   }
 
   function loadAnimeData() {
@@ -33,10 +51,12 @@ export const useHomeStore = defineStore('home', () => {
 
   return {
     hots,
-    banners,
     latest,
+    calendar,
     animeDetail,
+    episodes,
     anime_id,
+    detailLoading,
     homeDataAction,
     detailDataAction,
     loadAnimeData,

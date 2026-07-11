@@ -5,6 +5,7 @@ import vue from '@vitejs/plugin-vue'
 import AutoImport from 'unplugin-auto-import/vite'
 import Components from 'unplugin-vue-components/vite'
 import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import VueDevTools from 'vite-plugin-vue-devtools'
 // https://vitejs.dev/config/
 export default defineConfig(({ mode }) => {
   // 根据当前工作目录中的 `mode` 加载 .env 文件
@@ -25,6 +26,7 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [
       vue(),
+      VueDevTools(),
       AutoImport({
         imports: ['vue', 'vue-router'], // 自动导入vue和vue-router相关函数
         //自动引入ElementPlus相关函数和图标组件

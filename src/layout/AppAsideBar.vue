@@ -32,6 +32,7 @@ const props = defineProps({
 })
 
 const $route = useRoute()
+const $router = useRouter()
 
 const sliderStyle = computed(() => {
   const routeIndex = props.sideList.findIndex((item) => $route.fullPath.includes(item.routePath))

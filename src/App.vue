@@ -27,7 +27,13 @@ const WEB_NAME = import.meta.env.VITE_APP_TITLE
 const routeStore = useRouteStore()
 const sideList = routeStore.routeList
 
-const asideVisible = ref(true)
+const asideVisible = ref(window.innerWidth > 768)
+
+const onResize = () => {
+  asideVisible.value = window.innerWidth > 768
+}
+onMounted(() => window.addEventListener('resize', onResize))
+onUnmounted(() => window.removeEventListener('resize', onResize))
 </script>
 <style lang="less">
 @import '~styles/app';
@@ -116,6 +122,28 @@ const asideVisible = ref(true)
       to {
         opacity: 1;
       }
+    }
+  }
+}
+
+@media (max-width: 768px) {
+  .app-container {
+    &__aside {
+      position: fixed;
+      z-index: 100;
+      left: 0;
+      top: 0;
+      height: 100%;
+      border-radius: 0;
+      &.hide {
+        transform: translateX(-100%) !important;
+        width: 280px;
+      }
+    }
+    &__main {
+      margin: 10px;
+      height: calc(100% - 20px);
+      border-radius: 12px;
     }
   }
 }

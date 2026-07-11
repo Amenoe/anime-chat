@@ -8,12 +8,14 @@
       </template>
     </el-input>
     <div class="search-content">
-      <template v-for="item in searchList" :key="item.anime_id">
+      <template v-for="item in searchList" :key="item.id">
         <div class="list-item">
           <div class="content">
-            <div class="content-left" @click="animeClick(item.anime_id)">
-              <el-image :src="item.cover"> </el-image>
-              <div :title="item.title" class="title">{{ item.title }}</div>
+            <div class="content-left" @click="animeClick(item.id)">
+              <el-image :src="item.images?.common" />
+              <div :title="item.name_cn || item.name" class="title">
+                {{ item.name_cn || item.name }}
+              </div>
             </div>
           </div>
         </div>
@@ -23,17 +25,18 @@
 </template>
 
 <script setup lang="ts">
-import { getFilterData } from '@/api/search'
+import { searchAnime } from '@/api/search'
+import type { IBangumiSubject } from '@/api/types'
 import router from '@/router'
 
 const searchText = ref('')
-const searchList = ref<any>()
+const searchList = ref<IBangumiSubject[]>([])
 
 const searchClick = () => {
   if (searchText.value != '') {
-    getFilterData(searchText.value)
+    searchAnime(searchText.value)
       .then((res) => {
-        searchList.value = res
+        searchList.value = res.data ?? []
       })
       .then(() => {
         ElNotification({
@@ -46,8 +49,8 @@ const searchClick = () => {
   }
 }
 
-const animeClick = (anime_id: number) => {
-  router.push('/detail/' + anime_id)
+const animeClick = (id: number) => {
+  router.push('/detail/' + id)
 }
 </script>
 
