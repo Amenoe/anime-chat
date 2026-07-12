@@ -4,6 +4,8 @@
   "compilerOptions": {
     "composite": true,
     "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "moduleResolution": "Node",
     "types": ["node"]
   }
 }
