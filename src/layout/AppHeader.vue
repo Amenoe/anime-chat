@@ -14,32 +14,17 @@ import RegisterDialog from '@/components/Login/RegisterDialog.vue'
 import router from '@/router'
 import { useLoginStore } from '@/stores/modules/login'
 
-const avatarUrl = ref('')
-const isLogin = computed(() => {
-  return loginStore.token !== ''
-})
+const DEFAULT_AVATAR =
+  'https://i0.hdslb.com/bfs/face/99c781c93f035e005d1ee89b03f9d1f33ef2b933.jpg'
+const GUEST_AVATAR = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
 const loginStore = useLoginStore()
-const userInfo = loginStore.userInfo
-
-watch(
-  isLogin,
-  () => {
-    //判断是否登录
-    if (isLogin.value) {
-      //登录
-      avatarUrl.value =
-        userInfo?.avatar ||
-        'https://i0.hdslb.com/bfs/face/99c781c93f035e005d1ee89b03f9d1f33ef2b933.jpg'
-    } else {
-      //未登录
-      avatarUrl.value = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
-    }
-  },
-  {
-    immediate: true,
-  },
-)
+const isLogin = computed(() => loginStore.token !== '')
+// 响应式读 userInfo.avatar，上传头像后 Header 自动更新
+const avatarUrl = computed(() => {
+  if (!isLogin.value) return GUEST_AVATAR
+  return loginStore.userInfo?.avatar || DEFAULT_AVATAR
+})
 
 //组件实例
 const loginRef = ref<InstanceType<typeof LoginDialog>>()

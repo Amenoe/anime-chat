@@ -31,11 +31,11 @@
         <el-input
           v-model="registerForm.password"
           prefix-icon="Lock"
-          placeholder="请输入密码"
+          :placeholder="PASSWORD_HINT"
           show-password
         ></el-input>
       </el-form-item>
-      <el-button type="primary" @click="registerClick"> 立即注册 </el-button>
+      <el-button type="primary" :loading="registering" @click="registerClick"> 立即注册 </el-button>
     </el-form>
   </el-dialog>
 </template>
@@ -43,6 +43,7 @@
 <script setup lang="ts">
 import { register } from '@/api/login'
 import type { FormInstance } from 'element-plus'
+import { PASSWORD_HINT, passwordRule } from '@/utils/password'
 
 const dialogVisible = ref(false)
 
@@ -57,7 +58,6 @@ const registerForm = ref({
 //自定义校验规则
 const loginRules = {
   username: [
-    //分别是：是否必须，提示信息，触发时机
     { required: true, trigger: 'blur', message: '请输入您的账号' },
     {
       pattern: /^[A-Za-z0-9]{3,10}$/,
@@ -68,24 +68,33 @@ const loginRules = {
   nickname: [
     { required: true, trigger: 'blur', message: '请输入您的昵称' },
     {
-      pattern: /^[a-zA-Z0-9\u4e00-\u9fa5]{1,10}$/,
+      pattern: /^[a-zA-Z0-9一-龥]{1,10}$/,
       message: '请输入正确的昵称',
       trigger: 'change',
     },
   ],
-  password: [{ required: true, trigger: 'blur', message: '请输入您的密码' }],
+  password: [
+    { required: true, trigger: 'blur', message: '请输入您的密码' },
+    passwordRule(false),
+  ],
 }
 
+const registering = ref(false)
 const registerClick = () => {
-  registerRef.value?.validate((valid) => {
-    if (valid) {
-      register(registerForm.value).then(() => {
-        ElNotification({
-          type: 'success',
-          title: '注册成功',
-        })
-        dialogVisible.value = false
+  registerRef.value?.validate(async (valid) => {
+    if (!valid || registering.value) return
+    registering.value = true
+    try {
+      await register(registerForm.value)
+      ElNotification({
+        type: 'success',
+        title: '注册成功，请登录',
       })
+      dialogVisible.value = false
+    } catch {
+      // 错误已由 axios 拦截器提示
+    } finally {
+      registering.value = false
     }
   })
 }
@@ -107,27 +116,20 @@ defineExpose({
     color: #fff;
   }
 
-  // 登录框
   .register-form {
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
 
-    //表单输入框
     .el-input {
       width: @input-width;
       height: @input-height;
-    }
-    .el-input__inner::selection {
-      background-color: #318efe !important;
-      color: #fff !important;
     }
     .el-button {
       margin-top: 8px;
       width: @input-width;
       height: @input-height;
       margin-bottom: 8px;
-      background-color: var(--primary-color);
     }
   }
 }

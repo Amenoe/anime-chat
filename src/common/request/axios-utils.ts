@@ -15,7 +15,6 @@ export default class AxiosUtils {
   private requestInterceptor() {
     if (this.instance === null) return
     this.instance.interceptors.request.use((request) => {
-      //可以用来添加请求验证
       const token = localCache.getCache('token')
       if (token) {
         if (request && request.headers) {
@@ -32,43 +31,38 @@ export default class AxiosUtils {
     if (this.instance === null) return
     this.instance.interceptors.response.use(
       (response) => {
-        //拦截服务器发送的错误代码
-        if (response.data.code != 200) {
-          console.log('弹出错误')
+        // 业务 code 非 200：提示并 reject，避免调用方当成成功
+        if (response.data?.code != 200) {
           ElNotification({
             type: 'error',
-            title: `请求错误 ${response.data.code}`,
-            message: response.data.message,
+            title: `请求错误 ${response.data?.code ?? ''}`,
+            message: response.data?.message || '请求失败',
           })
-        } else {
-          return response.data.data
+          return Promise.reject(response.data)
         }
+        return response.data.data
       },
       (error) => {
-        console.log(error)
-        //拦截服务器发送的错误代码
-        if (error.response.status === 500) {
+        const status = error.response?.status
+        const payload = error.response?.data
+        if (status === 500) {
           ElNotification({
             type: 'error',
-            title: `请求错误 ${error.response.status}`,
+            title: `请求错误 ${status}`,
             message: '服务器出现问题，请稍等QAQ',
           })
         } else {
           ElNotification({
             type: 'error',
-            title: `请求错误 ${error.response.data.code}`,
-            message: error.response.data.message,
+            title: `请求错误 ${payload?.code ?? status ?? ''}`,
+            message: payload?.message || error.message || '网络异常',
           })
         }
-        return Promise.reject()
+        return Promise.reject(error)
       },
     )
   }
-  /**
-   * 调用实例的请求
-   * @param config 请求参数
-   * @returns Promise
-   */
+
   get<T = any>(config: AxiosRequestConfig): Promise<T> {
     return this.instance.request({ ...config, method: 'GET' })
   }

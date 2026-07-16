@@ -119,6 +119,30 @@
 
       <!-- 操作按钮 -->
       <div class="action-bar">
+        <el-dropdown
+          trigger="click"
+          popper-class="detail-collect-dropdown"
+          @command="onCollectCommand"
+        >
+          <button class="action-btn action-btn--ghost">
+            {{ collectBtnText }}
+            <span class="action-btn__caret">▾</span>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="wish">想看</el-dropdown-item>
+              <el-dropdown-item command="watching">在看</el-dropdown-item>
+              <el-dropdown-item command="done">看完</el-dropdown-item>
+              <el-dropdown-item
+                v-if="userAnimeStore.current"
+                divided
+                command="cancel"
+              >
+                取消追番
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <button class="action-btn action-btn--primary" @click="newChatClick">加入聊天室</button>
       </div>
     </template>
@@ -128,6 +152,8 @@
 <script setup lang="ts">
 import { useHomeStore } from '@/stores/modules/home'
 import { useLoginStore } from '@/stores/modules/login'
+import { useUserAnimeStore } from '@/stores/modules/userAnime'
+import type { UserAnimeStatus } from '@/api/types'
 
 const router = useRouter()
 const route = useRoute()
@@ -135,6 +161,7 @@ const anime_id = Number(route.params.anime_id)
 
 const homeStore = useHomeStore()
 const loginStore = useLoginStore()
+const userAnimeStore = useUserAnimeStore()
 
 homeStore.detailDataAction(anime_id)
 
@@ -162,12 +189,58 @@ const infoItems = computed(() => {
     .slice(0, 4)
 })
 
-const newChatClick = () => {
+const collectBtnText = computed(() => {
+  const cur = userAnimeStore.current
+  if (!cur) return '追番'
+  return userAnimeStore.labelOf(cur.status)
+})
+
+watch(
+  () => [loginStore.token, anime_id] as const,
+  ([token]) => {
+    if (token) {
+      userAnimeStore.fetchOne(anime_id).catch(() => {
+        userAnimeStore.current = null
+      })
+    } else {
+      userAnimeStore.current = null
+    }
+  },
+  { immediate: true },
+)
+
+const ensureLogin = () => {
   if (loginStore.token === '') {
     ElNotification({ type: 'error', message: '您还没有登录' })
-  } else {
-    router.push('/chat')
+    return false
   }
+  return true
+}
+
+const newChatClick = () => {
+  if (!ensureLogin()) return
+  router.push('/chat')
+}
+
+async function onCollectCommand(cmd: string) {
+  if (!ensureLogin()) return
+  if (cmd === 'cancel') {
+    await userAnimeStore.cancel(anime_id)
+    ElNotification({ type: 'success', title: '已取消追番' })
+    return
+  }
+  const d = detailData.value
+  await userAnimeStore.setStatus({
+    bangumi_id: anime_id,
+    status: cmd as UserAnimeStatus,
+    title: d?.name,
+    name_cn: d?.name_cn,
+    cover: d?.images?.large || d?.images?.common,
+  })
+  ElNotification({
+    type: 'success',
+    title: `已标记为${userAnimeStore.labelOf(cmd as UserAnimeStatus)}`,
+  })
 }
 </script>
 
@@ -413,6 +486,10 @@ const newChatClick = () => {
 .action-bar {
   margin-top: 32px;
   padding-bottom: 12px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
 .action-btn {
@@ -432,6 +509,22 @@ const newChatClick = () => {
       transform: translateY(-2px);
       box-shadow: 0 4px 16px rgba(104, 198, 189, 0.4);
     }
+  }
+
+  &--ghost {
+    background: transparent;
+    color: @accent;
+    border: 1px solid rgba(104, 198, 189, 0.55);
+
+    &:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 12px rgba(104, 198, 189, 0.2);
+    }
+  }
+
+  &__caret {
+    margin-left: 6px;
+    opacity: 0.8;
   }
 }
 
@@ -455,6 +548,51 @@ const newChatClick = () => {
   .sk {
     &__hero { flex-direction: column; align-items: center; }
     &__cover { width: 160px; height: 220px; }
+  }
+}
+</style>
+
+<!-- 下拉挂载到 body，需非 scoped 才能命中 popper-class -->
+<style lang="less">
+.detail-collect-dropdown {
+  background-color: var(--aside-bg-color) !important;
+  border: 1px solid rgba(104, 198, 189, 0.2) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35) !important;
+
+  .el-dropdown-menu {
+    background-color: transparent;
+    border: none;
+    padding: 4px 0;
+  }
+
+  .el-dropdown-menu__item {
+    color: #fff;
+    background-color: transparent;
+
+    &:hover,
+    &:focus {
+      background-color: var(--bg-color) !important;
+      color: var(--primary-color) !important;
+    }
+
+    &.is-disabled {
+      color: var(--font-unactive-color);
+    }
+  }
+
+  .el-dropdown-menu__item--divided {
+    border-top: 1px solid rgba(104, 198, 189, 0.2);
+    margin-top: 4px;
+
+    &::before {
+      background-color: transparent;
+      height: 0;
+    }
+  }
+
+  .el-popper__arrow::before {
+    background: var(--aside-bg-color) !important;
+    border: 1px solid rgba(104, 198, 189, 0.2) !important;
   }
 }
 </style>

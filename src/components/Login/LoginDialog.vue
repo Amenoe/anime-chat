@@ -28,7 +28,7 @@
           show-password
         ></el-input>
       </el-form-item>
-      <el-button type="primary" @click="loginClick"> 立即登录 </el-button>
+      <el-button type="primary" :loading="loggingIn" @click="loginClick"> 立即登录 </el-button>
     </el-form>
     <template #footer>
       <span class="dialog-footer">
@@ -65,17 +65,23 @@ const loginRules = {
   password: [{ required: true, trigger: 'blur', message: '请输入您的密码' }],
 }
 
+const loggingIn = ref(false)
 // 登录事件
 const loginClick = () => {
-  loginRef.value?.validate((valid) => {
-    if (valid) {
-      loginStore.loginAction(loginForm.value).then(() => {
-        dialogVisible.value = false
-        ElNotification({
-          type: 'success',
-          title: '登录成功',
-        })
+  loginRef.value?.validate(async (valid) => {
+    if (!valid || loggingIn.value) return
+    loggingIn.value = true
+    try {
+      await loginStore.loginAction(loginForm.value)
+      dialogVisible.value = false
+      ElNotification({
+        type: 'success',
+        title: '登录成功',
       })
+    } catch {
+      // 错误已由 axios 拦截器提示
+    } finally {
+      loggingIn.value = false
     }
   })
 }
@@ -121,7 +127,6 @@ defineExpose({
       width: @input-width;
       height: @input-height;
       margin-bottom: 8px;
-      background-color: var(--primary-color);
     }
   }
 }

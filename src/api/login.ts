@@ -41,8 +41,8 @@ export function getUserInfo(userid: string) {
  * @param user
  * @returns
  */
-export function updateUserInfo(id: string, user: Partial<IUserInfo>) {
-  return request.patch({
+export function updateUserInfo(id: string, user: Partial<IUserInfo> & { password?: string }) {
+  return request.patch<IUserInfo>({
     url: `/user/${id}`,
     data: user,
   })
@@ -53,5 +53,18 @@ export function updateUserStatus(id: string, status: number) {
   return request.patch({
     url: `/user/status/${id}`,
     data: { status },
+  })
+}
+
+/**
+ * 上传用户头像
+ * multipart 字段名 file；勿手写 Content-Type，交给浏览器带 boundary
+ */
+export function uploadAvatar(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return request.post<IUserInfo>({
+    url: '/user/avatar',
+    data: formData,
   })
 }

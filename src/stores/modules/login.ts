@@ -1,28 +1,41 @@
-import { getUserInfo, login, updateUserInfo } from '@/api/login'
+import { getUserInfo, login, updateUserInfo, uploadAvatar } from '@/api/login'
 import { defineStore } from 'pinia'
 import type { apiType } from '../types'
 import localCache from '@/utils/cache'
 import type { IUserInfo } from '@/api/types'
+
 export const useLoginStore = defineStore('login', () => {
   const userInfo = ref<IUserInfo>()
   const token = ref('')
+
+  function setUserInfo(data: IUserInfo) {
+    userInfo.value = data
+    localCache.setCache('userInfo', data)
+  }
+
   async function loginAction(data: apiType.ILogin) {
-    //登录
     const loginData = await login(data)
     token.value = loginData.token
     localCache.setCache('token', loginData.token)
 
-    // //请求用户信息
-    const userInfoData = await getUserInfo(loginData.user_id)
-    userInfo.value = userInfoData
-    localCache.setCache('userInfo', userInfoData)
+    // 优先用登录响应里的 user，兼容旧后端再请求一次
+    if (loginData.user) {
+      setUserInfo(loginData.user)
+    } else {
+      const userInfoData = await getUserInfo(loginData.user_id)
+      setUserInfo(userInfoData)
+    }
   }
 
-  async function updateUserAction(id: string, data: Partial<IUserInfo>) {
-    //更新用户信息
+  async function updateUserAction(id: string, data: Partial<IUserInfo> & { password?: string }) {
     const updateData = await updateUserInfo(id, data)
-    userInfo.value = updateData
-    localCache.setCache('userInfo', updateData)
+    setUserInfo(updateData)
+  }
+
+  async function uploadAvatarAction(file: File) {
+    const data = await uploadAvatar(file)
+    setUserInfo(data)
+    return data
   }
 
   function loadLocalLogin() {
@@ -36,5 +49,21 @@ export const useLoginStore = defineStore('login', () => {
     }
   }
 
-  return { token, userInfo, loginAction, loadLocalLogin, updateUserAction }
+  function logoutLocal() {
+    token.value = ''
+    userInfo.value = undefined
+    localCache.delCache('token')
+    localCache.delCache('userInfo')
+  }
+
+  return {
+    token,
+    userInfo,
+    loginAction,
+    loadLocalLogin,
+    updateUserAction,
+    uploadAvatarAction,
+    setUserInfo,
+    logoutLocal,
+  }
 })

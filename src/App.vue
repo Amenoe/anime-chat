@@ -15,6 +15,8 @@
     <main class="app-container__main">
       <AppRouter />
     </main>
+    <!-- 全局二次确认弹窗宿主 -->
+    <AppConfirmHost />
   </div>
 </template>
 
@@ -22,6 +24,7 @@
 import AppAsideBar from '@/layout/AppAsideBar.vue'
 import AppRouter from '@/layout/AppRouter.vue'
 import AppHeader from '@/layout/AppHeader.vue'
+import AppConfirmHost from '@/components/AppConfirm/AppConfirmHost.vue'
 import { useRouteStore } from '@/stores/modules/route'
 const WEB_NAME = import.meta.env.VITE_APP_TITLE
 const routeStore = useRouteStore()

@@ -94,6 +94,8 @@ export interface ILoginData {
   user_id: string
   username: string
   token: string
+  /** 后端成熟化后附带完整用户信息，可省一次 getUserInfo */
+  user?: IUserInfo
 }
 
 export interface IUserInfo {
@@ -104,4 +106,27 @@ export interface IUserInfo {
   role: string
   status: number
   create_time: string
+}
+
+/** 追番状态：想看 / 在看 / 看完 */
+export type UserAnimeStatus = 'wish' | 'watching' | 'done'
+
+export interface IUserAnime {
+  id: string
+  user_id: string
+  bangumi_id: number
+  status: UserAnimeStatus
+  title: string | null
+  name_cn: string | null
+  cover: string | null
+  create_time: string
+  update_time: string
+}
+
+export interface IUserAnimePayload {
+  bangumi_id: number
+  status: UserAnimeStatus
+  title?: string
+  name_cn?: string
+  cover?: string
 }
