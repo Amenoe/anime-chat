@@ -2,6 +2,34 @@ import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig } from 'axios'
 import localCache from '@/utils/cache'
 
+/** 并发 401 时只提示一次 */
+let authExpiredNotifying = false
+
+/**
+ * token 失效：清 localStorage + pinia 登录态，提示重新登录。
+ * 用动态 import 避免 request ↔ login store 循环依赖。
+ */
+function handleUnauthorized() {
+  localCache.delCache('token')
+  localCache.delCache('userInfo')
+  void import('@/stores/modules/login')
+    .then(({ useLoginStore }) => {
+      useLoginStore().logoutLocal()
+    })
+    .catch(() => undefined)
+
+  if (authExpiredNotifying) return
+  authExpiredNotifying = true
+  ElNotification({
+    type: 'warning',
+    title: '请重新登录',
+    message: '登录已过期或无效，请重新登录',
+  })
+  window.setTimeout(() => {
+    authExpiredNotifying = false
+  }, 3000)
+}
+
 export default class AxiosUtils {
   private instance: AxiosInstance
   constructor(config: AxiosRequestConfig) {
@@ -32,6 +60,11 @@ export default class AxiosUtils {
     this.instance.interceptors.response.use(
       (response) => {
         // 业务 code 非 200：提示并 reject，避免调用方当成成功
+        // 部分网关/历史接口可能把 401 放在 body.code
+        if (response.data?.code === 401) {
+          handleUnauthorized()
+          return Promise.reject(response.data)
+        }
         if (response.data?.code != 200) {
           ElNotification({
             type: 'error',
@@ -45,6 +78,10 @@ export default class AxiosUtils {
       (error) => {
         const status = error.response?.status
         const payload = error.response?.data
+        if (status === 401 || payload?.code === 401) {
+          handleUnauthorized()
+          return Promise.reject(error)
+        }
         if (status === 500) {
           ElNotification({
             type: 'error',
