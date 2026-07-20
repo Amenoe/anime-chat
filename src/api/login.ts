@@ -57,8 +57,10 @@ export function updateUserStatus(id: string, status: number) {
 }
 
 /**
- * 上传用户头像
- * multipart 字段名 file；勿手写 Content-Type，交给浏览器带 boundary
+ * 上传用户头像到后端（后端再写入 MinIO Private 桶）
+ * multipart 字段名：file
+ * 不要手动写死 Content-Type，浏览器/axios 会自动带 boundary
+ * 成功返回用户信息，avatar 形如 /api/images/avatars/xxx.png（经后端代理读取 Private 桶）
  */
 export function uploadAvatar(file: File) {
   const formData = new FormData()

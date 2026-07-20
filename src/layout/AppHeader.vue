@@ -13,17 +13,16 @@ import LoginDialog from '@/components/Login/LoginDialog.vue'
 import RegisterDialog from '@/components/Login/RegisterDialog.vue'
 import router from '@/router'
 import { useLoginStore } from '@/stores/modules/login'
+import { resolveAvatarUrl } from '@/utils/avatar'
 
-const DEFAULT_AVATAR =
-  'https://i0.hdslb.com/bfs/face/99c781c93f035e005d1ee89b03f9d1f33ef2b933.jpg'
 const GUEST_AVATAR = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
 const loginStore = useLoginStore()
 const isLogin = computed(() => loginStore.token !== '')
-// 响应式读 userInfo.avatar，上传头像后 Header 自动更新
+// 响应式读 userInfo.avatar；空值回落到默认头像
 const avatarUrl = computed(() => {
   if (!isLogin.value) return GUEST_AVATAR
-  return loginStore.userInfo?.avatar || DEFAULT_AVATAR
+  return resolveAvatarUrl(loginStore.userInfo?.avatar)
 })
 
 //组件实例

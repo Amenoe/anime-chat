@@ -49,6 +49,20 @@ export default class AxiosUtils {
           request.headers.Authorization = `Bearer ${token}`
         }
       }
+      // FormData 上传时删除手动 Content-Type，让浏览器自动带 boundary
+      if (typeof FormData !== 'undefined' && request.data instanceof FormData) {
+        if (request.headers) {
+          // axios v1 headers 可能是 AxiosHeaders
+          const headers: any = request.headers
+          if (typeof headers.delete === 'function') {
+            headers.delete('Content-Type')
+            headers.delete('content-type')
+          } else {
+            delete headers['Content-Type']
+            delete headers['content-type']
+          }
+        }
+      }
       return request
     })
   }

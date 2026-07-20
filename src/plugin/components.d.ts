@@ -9,6 +9,7 @@ declare module '@vue/runtime-core' {
   export interface GlobalComponents {
     AppConfirmHost: typeof import('./../components/AppConfirm/AppConfirmHost.vue')['default']
     AppForm: typeof import('./../components/AppForm/AppForm.vue')['default']
+    AvatarCropDialog: typeof import('./../components/AvatarCrop/AvatarCropDialog.vue')['default']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCarousel: typeof import('element-plus/es')['ElCarousel']

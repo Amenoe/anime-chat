@@ -75,6 +75,7 @@ import { useChatStore } from '@/stores/modules/chat'
 import { useLoginStore } from '@/stores/modules/login'
 import { useHomeStore } from '@/stores/modules/home'
 import { formatStamp } from '@/utils/date-format'
+import { resolveAvatarUrl } from '@/utils/avatar'
 
 const inputText = ref('')
 const listRef = ref<HTMLElement | null>(null)
@@ -95,15 +96,11 @@ const canSend = computed(
   () => connected.value && !joining.value && inputText.value.trim().length > 0,
 )
 
-const DEFAULT_AVATAR =
-  'https://i0.hdslb.com/bfs/face/99c781c93f035e005d1ee89b03f9d1f33ef2b933.jpg'
-
 const isSelf = (userId: string) => userId === loginStore.userInfo?.user_id
 
-/** 后端存 /api/images/...，开发走 vite 代理；缺省用默认图 */
+/** 空头像回落到默认图 */
 function avatarOf(src?: string) {
-  if (src && src.trim()) return src
-  return DEFAULT_AVATAR
+  return resolveAvatarUrl(src)
 }
 
 function goBack() {

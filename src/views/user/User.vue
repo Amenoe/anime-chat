@@ -21,11 +21,19 @@
                 :disabled="uploading"
                 :on-change="onAvatarChange"
               >
-                <el-button type="primary" :loading="uploading">上传头像</el-button>
+                <el-button type="primary" :loading="uploading">选择头像</el-button>
               </el-upload>
-              <p class="avatar-upload__tip">支持 jpg / png / gif / webp，不超过 2MB</p>
+              <p class="avatar-upload__tip">
+                支持 jpg / png / gif / webp（原图≤5MB）；裁剪后将上传为 JPEG 正方形头像
+              </p>
             </div>
           </div>
+          <AvatarCropDialog
+            v-model="cropVisible"
+            :image-url="cropImageUrl"
+            @confirm="onCropConfirm"
+            @closed="revokeCropUrl"
+          />
           <AppForm ref="formRef" v-model="formData" :form-item="updateItem"></AppForm>
           <el-button type="primary" :loading="updating" @click="updateClick">确认修改</el-button>
         </el-tab-pane>
@@ -84,13 +92,13 @@ import AppForm from '@/components/AppForm/AppForm.vue'
 import { formatUtcString } from '@/utils/date-format'
 import { PASSWORD_HINT, passwordRule } from '@/utils/password'
 import { appConfirm } from '@/composables/useConfirm'
+import { resolveAvatarUrl } from '@/utils/avatar'
+import AvatarCropDialog from '@/components/AvatarCrop/AvatarCropDialog.vue'
 
 const activeName = ref('userinfo')
 const collectTab = ref<UserAnimeStatus>('wish')
 const defaultCover = 'https://bgm.tv/img/no_icon_subject.png'
-const DEFAULT_AVATAR =
-  'https://i0.hdslb.com/bfs/face/99c781c93f035e005d1ee89b03f9d1f33ef2b933.jpg'
-const MAX_AVATAR_SIZE = 2 * 1024 * 1024
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024
 
 const loginStore = useLoginStore()
 const userAnimeStore = useUserAnimeStore()
@@ -98,9 +106,18 @@ const router = useRouter()
 
 const isLogin = computed(() => loginStore.token !== '')
 const userInfo = computed(() => loginStore.userInfo)
-const currentAvatar = computed(() => userInfo.value?.avatar || DEFAULT_AVATAR)
+const currentAvatar = computed(() => resolveAvatarUrl(userInfo.value?.avatar))
 const uploading = ref(false)
 const updating = ref(false)
+const cropVisible = ref(false)
+const cropImageUrl = ref('')
+
+/** 释放本地预览 Object URL（幂等，可重复调用） */
+function revokeCropUrl() {
+  if (!cropImageUrl.value) return
+  URL.revokeObjectURL(cropImageUrl.value)
+  cropImageUrl.value = ''
+}
 
 const roleLabel = computed(() => {
   const role = userInfo.value?.role
@@ -224,7 +241,7 @@ async function onAvatarChange(uploadFile: UploadFile) {
   if (!raw) return
 
   if (raw.size > MAX_AVATAR_SIZE) {
-    ElNotification({ type: 'error', title: '图片不能超过 2MB' })
+    ElNotification({ type: 'error', title: '图片不能超过 5MB' })
     return
   }
 
@@ -234,21 +251,23 @@ async function onAvatarChange(uploadFile: UploadFile) {
     return
   }
 
-  const ok = await appConfirm({
-    title: '上传头像',
-    message: '确定使用所选图片作为新头像吗？',
-    confirmText: '上传',
-  })
-  if (!ok) return
+  // 重新选择时先释放上一次本地预览
+  revokeCropUrl()
+  cropImageUrl.value = URL.createObjectURL(raw)
+  cropVisible.value = true
+}
 
+async function onCropConfirm(file: File) {
   uploading.value = true
   try {
-    await loginStore.uploadAvatarAction(raw)
+    await loginStore.uploadAvatarAction(file)
     ElNotification({ type: 'success', title: '头像上传成功' })
   } catch {
     // 错误已由 request 拦截器提示
   } finally {
     uploading.value = false
+    // 上传结束（成功/失败）释放预览 URL；取消走 dialog @closed
+    revokeCropUrl()
   }
 }
 
