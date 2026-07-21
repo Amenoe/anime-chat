@@ -42,7 +42,9 @@
           <!-- 数据统计卡片 -->
           <div class="stat-row">
             <div class="stat-card">
-              <span class="stat-card__value">{{ detailData.rating?.score?.toFixed(1) ?? '-' }}</span>
+              <span class="stat-card__value">{{
+                detailData.rating?.score?.toFixed(1) ?? '-'
+              }}</span>
               <span class="stat-card__label">评分</span>
             </div>
             <div v-if="detailData.rating?.rank" class="stat-card">
@@ -61,11 +63,7 @@
 
           <!-- 标签 -->
           <div v-if="detailData.tags?.length" class="tag-row">
-            <span
-              v-for="tag in detailData.tags.slice(0, 10)"
-              :key="tag.name"
-              class="anime-tag"
-            >
+            <span v-for="tag in detailData.tags.slice(0, 10)" :key="tag.name" class="anime-tag">
               {{ tag.name }}
             </span>
           </div>
@@ -102,12 +100,7 @@
           <span class="section__count">共 {{ episodes.length }} 话</span>
         </div>
         <div class="ep-grid">
-          <div
-            v-for="ep in episodes"
-            :key="ep.id"
-            class="ep-card"
-            :title="ep.name_cn || ep.name"
-          >
+          <div v-for="ep in episodes" :key="ep.id" class="ep-card" :title="ep.name_cn || ep.name">
             <span class="ep-card__num">{{ ep.sort }}</span>
             <div class="ep-card__info">
               <span class="ep-card__name">{{ ep.name_cn || ep.name }}</span>
@@ -133,11 +126,7 @@
               <el-dropdown-item command="wish">想看</el-dropdown-item>
               <el-dropdown-item command="watching">在看</el-dropdown-item>
               <el-dropdown-item command="done">看完</el-dropdown-item>
-              <el-dropdown-item
-                v-if="userAnimeStore.current"
-                divided
-                command="cancel"
-              >
+              <el-dropdown-item v-if="userAnimeStore.current" divided command="cancel">
                 取消追番
               </el-dropdown-item>
             </el-dropdown-menu>
@@ -259,20 +248,59 @@ async function onCollectCommand(cmd: string) {
 }
 
 @keyframes sk-shimmer {
-  0% { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .sk {
-  &__hero { display: flex; gap: 24px; }
-  &__cover { width: 220px; height: 310px; border-radius: 12px; flex-shrink: 0; }
-  &__meta { flex: 1; display: flex; flex-direction: column; gap: 14px; padding-top: 6px; }
-  &__stat-row { display: flex; gap: 10px; }
-  &__tag-row { display: flex; gap: 8px; }
-  &__tag { width: 50px; height: 22px; border-radius: 10px; }
-  &__section { border-radius: 4px; }
-  &__eps { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
-  &__ep { width: 160px; height: 52px; border-radius: 8px; }
+  &__hero {
+    display: flex;
+    gap: 24px;
+  }
+  &__cover {
+    width: 220px;
+    height: 310px;
+    border-radius: 12px;
+    flex-shrink: 0;
+  }
+  &__meta {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 6px;
+  }
+  &__stat-row {
+    display: flex;
+    gap: 10px;
+  }
+  &__tag-row {
+    display: flex;
+    gap: 8px;
+  }
+  &__tag {
+    width: 50px;
+    height: 22px;
+    border-radius: 10px;
+  }
+  &__section {
+    border-radius: 4px;
+  }
+  &__eps {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+  }
+  &__ep {
+    width: 160px;
+    height: 52px;
+    border-radius: 8px;
+  }
 }
 
 // ── Hero 区 ──
@@ -535,19 +563,39 @@ async function onCollectCommand(cmd: string) {
     align-items: center;
     text-align: center;
 
-    &__cover { width: 160px; }
-    &__title { font-size: 20px; }
+    &__cover {
+      width: 160px;
+    }
+    &__title {
+      font-size: 20px;
+    }
   }
 
-  .stat-row { justify-content: center; }
-  .tag-row { justify-content: center; }
-  .collection-row { justify-content: center; }
-  .info-row { justify-content: center; }
-  .ep-grid { grid-template-columns: 1fr 1fr; }
+  .stat-row {
+    justify-content: center;
+  }
+  .tag-row {
+    justify-content: center;
+  }
+  .collection-row {
+    justify-content: center;
+  }
+  .info-row {
+    justify-content: center;
+  }
+  .ep-grid {
+    grid-template-columns: 1fr 1fr;
+  }
 
   .sk {
-    &__hero { flex-direction: column; align-items: center; }
-    &__cover { width: 160px; height: 220px; }
+    &__hero {
+      flex-direction: column;
+      align-items: center;
+    }
+    &__cover {
+      width: 160px;
+      height: 220px;
+    }
   }
 }
 </style>

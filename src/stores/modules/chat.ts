@@ -116,9 +116,7 @@ export const useChatStore = defineStore('chat', () => {
         group.value = res as ChatGroup
         joinResolver?.(res as ChatGroup)
       } else {
-        const err = new Error(
-          (res as { message?: string })?.message || '加入聊天室失败',
-        )
+        const err = new Error((res as { message?: string })?.message || '加入聊天室失败')
         joinRejecter?.(err)
       }
       joinResolver = null
@@ -156,16 +154,13 @@ export const useChatStore = defineStore('chat', () => {
       }
     })
 
-    s.on(
-      'activeGroupUser',
-      (res: { code: number; data: number; group_id?: string }) => {
-        if (res?.code !== 200) return
-        if (res.group_id && group.value && res.group_id !== group.value.group_id) {
-          return
-        }
-        activeUser.value = Number(res.data) || 0
-      },
-    )
+    s.on('activeGroupUser', (res: { code: number; data: number; group_id?: string }) => {
+      if (res?.code !== 200) return
+      if (res.group_id && group.value && res.group_id !== group.value.group_id) {
+        return
+      }
+      activeUser.value = Number(res.data) || 0
+    })
   }
 
   function waitConnected(s: Socket, timeoutMs = 8000): Promise<void> {
@@ -209,10 +204,7 @@ export const useChatStore = defineStore('chat', () => {
       }
 
       const title =
-        groupName ||
-        homeStore.animeDetail?.name_cn ||
-        homeStore.animeDetail?.name ||
-        undefined
+        groupName || homeStore.animeDetail?.name_cn || homeStore.animeDetail?.name || undefined
 
       const joined = await new Promise<ChatGroup>((resolve, reject) => {
         joinResolver = resolve

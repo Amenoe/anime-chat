@@ -31,8 +31,7 @@ export type SearchAnimeParams = {
  */
 export function searchAnime(params: SearchAnimeParams | string) {
   // 兼容旧调用 searchAnime(keyword)
-  const p: SearchAnimeParams =
-    typeof params === 'string' ? { keyword: params } : params
+  const p: SearchAnimeParams = typeof params === 'string' ? { keyword: params } : params
 
   const keyword = (p.keyword || '').trim()
   const limit = p.limit ?? 20

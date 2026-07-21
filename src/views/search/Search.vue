@@ -20,11 +20,7 @@
         <div class="toolbar-row">
           <span class="toolbar-label">排序</span>
           <el-radio-group v-model="sortMode" size="small" @change="onSortChange">
-            <el-radio-button
-              v-for="opt in sortOptions"
-              :key="opt.value"
-              :value="opt.value"
-            >
+            <el-radio-button v-for="opt in sortOptions" :key="opt.value" :value="opt.value">
               {{ opt.label }}
             </el-radio-button>
           </el-radio-group>
@@ -41,19 +37,9 @@
             :placeholder="cat.label"
             class="filter-chip"
           >
-            <el-option
-              v-for="tag in cat.options"
-              :key="tag"
-              :label="tag"
-              :value="tag"
-            />
+            <el-option v-for="tag in cat.options" :key="tag" :label="tag" :value="tag" />
           </el-select>
-          <el-button
-            v-if="hasActiveTags"
-            size="small"
-            class="filter-reset"
-            @click="resetFilters"
-          >
+          <el-button v-if="hasActiveTags" size="small" class="filter-reset" @click="resetFilters">
             重置
           </el-button>
         </div>
@@ -85,10 +71,7 @@
             @click="animeClick(item.id)"
           >
             <div class="anime-card__cover">
-              <img
-                :src="item.images?.common || defaultCover"
-                :alt="item.name_cn || item.name"
-              />
+              <img :src="item.images?.common || defaultCover" :alt="item.name_cn || item.name" />
               <div class="anime-card__overlay">
                 <span v-if="item.rating?.score" class="anime-card__score">
                   {{ item.rating.score.toFixed(1) }}
@@ -134,10 +117,7 @@ const sortMode = ref<SortMode>('match')
 
 /** 各分类下选中的公共标签（每类单选） */
 const selectedTags = reactive(
-  Object.fromEntries(SEARCH_META_TAG_CATEGORIES.map((c) => [c.key, ''])) as Record<
-    string,
-    string
-  >,
+  Object.fromEntries(SEARCH_META_TAG_CATEGORIES.map((c) => [c.key, ''])) as Record<string, string>,
 )
 
 const sortOptions: Array<{ label: string; value: SortMode }> = [

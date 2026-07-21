@@ -170,10 +170,7 @@ const updateItem: IFormItem[] = [
     label: '新密码',
     type: 'password',
     placeholder: PASSWORD_HINT,
-    rules: [
-      { required: true, message: '请输入新密码', trigger: 'blur' },
-      passwordRule(false),
-    ],
+    rules: [{ required: true, message: '请输入新密码', trigger: 'blur' }, passwordRule(false)],
   },
 ]
 

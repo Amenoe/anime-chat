@@ -73,10 +73,7 @@ const loginRules = {
       trigger: 'change',
     },
   ],
-  password: [
-    { required: true, trigger: 'blur', message: '请输入您的密码' },
-    passwordRule(false),
-  ],
+  password: [{ required: true, trigger: 'blur', message: '请输入您的密码' }, passwordRule(false)],
 }
 
 const registering = ref(false)

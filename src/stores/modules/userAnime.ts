@@ -1,11 +1,6 @@
 import { defineStore } from 'pinia'
 import type { IUserAnime, UserAnimeStatus } from '@/api/types'
-import {
-  getUserAnime,
-  listUserAnime,
-  removeUserAnime,
-  upsertUserAnime,
-} from '@/api/user-anime'
+import { getUserAnime, listUserAnime, removeUserAnime, upsertUserAnime } from '@/api/user-anime'
 
 const STATUS_LABEL: Record<UserAnimeStatus, string> = {
   wish: '想看',
@@ -33,15 +28,13 @@ export const useUserAnimeStore = defineStore('userAnime', () => {
     return current.value
   }
 
-  async function setStatus(
-    payload: {
-      bangumi_id: number
-      status: UserAnimeStatus
-      title?: string
-      name_cn?: string
-      cover?: string
-    },
-  ) {
+  async function setStatus(payload: {
+    bangumi_id: number
+    status: UserAnimeStatus
+    title?: string
+    name_cn?: string
+    cover?: string
+  }) {
     const row = await upsertUserAnime(payload)
     current.value = row
     // 同步列表中的同 id

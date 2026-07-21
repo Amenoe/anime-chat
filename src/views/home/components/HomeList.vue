@@ -4,12 +4,7 @@
       <span class="home-list__title">{{ title }}</span>
     </div>
     <div class="home-list__grid">
-      <div
-        v-for="item in listData"
-        :key="item.id"
-        class="anime-card"
-        @click="animeClick(item.id)"
-      >
+      <div v-for="item in listData" :key="item.id" class="anime-card" @click="animeClick(item.id)">
         <div class="anime-card__cover">
           <img :src="item.images?.common" alt="" />
           <div class="anime-card__overlay">

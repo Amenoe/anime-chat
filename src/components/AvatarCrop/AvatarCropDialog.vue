@@ -17,11 +17,7 @@
           draggable="false"
           @load="onImageLoad"
         />
-        <div
-          class="crop-box"
-          :style="boxStyle"
-          @pointerdown.stop="startDrag($event)"
-        >
+        <div class="crop-box" :style="boxStyle" @pointerdown.stop="startDrag($event)">
           <span class="crop-handle nw" @pointerdown.stop="startResize($event, 'nw')" />
           <span class="crop-handle ne" @pointerdown.stop="startResize($event, 'ne')" />
           <span class="crop-handle sw" @pointerdown.stop="startResize($event, 'sw')" />
@@ -50,11 +46,12 @@ const props = defineProps<{
   outputSize?: number
 }>()
 
+// Vue 3.3+ 对象形式；避免 call signature 触发 no-spaced-func
 const emit = defineEmits<{
-  (e: 'update:modelValue', v: boolean): void
-  (e: 'confirm', file: File): void
+  'update:modelValue': [v: boolean]
+  confirm: [file: File]
   /** 弹窗完全关闭后（取消/确认/点 X），父组件可在此释放 Object URL */
-  (e: 'closed'): void
+  closed: []
 }>()
 
 const visible = computed({
