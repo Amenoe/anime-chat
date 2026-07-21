@@ -33,10 +33,14 @@ watch(
 
 <style scoped lang="less">
 @RouteDelay: 0.25s;
+/* absolute 过渡时必须撑满 main，否则内容按 intrinsic 宽度挤在左侧再展开 */
 .base {
   position: absolute !important;
   left: 0;
   top: 0;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
 }
 .flod-up {
   &-enter-active {
