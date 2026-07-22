@@ -7,11 +7,14 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
+    AnimePlayer: typeof import('./../components/Player/AnimePlayer.vue')['default']
     AppConfirmHost: typeof import('./../components/AppConfirm/AppConfirmHost.vue')['default']
     AppForm: typeof import('./../components/AppForm/AppForm.vue')['default']
     AvatarCropDialog: typeof import('./../components/AvatarCrop/AvatarCropDialog.vue')['default']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElButton: typeof import('element-plus/es')['ElButton']
+    ElCollapse: typeof import('element-plus/es')['ElCollapse']
+    ElCollapseItem: typeof import('element-plus/es')['ElCollapseItem']
     ElDialog: typeof import('element-plus/es')['ElDialog']
     ElDropdown: typeof import('element-plus/es')['ElDropdown']
     ElDropdownItem: typeof import('element-plus/es')['ElDropdownItem']
@@ -22,6 +25,7 @@ declare module '@vue/runtime-core' {
     ElIcon: typeof import('element-plus/es')['ElIcon']
     ElImage: typeof import('element-plus/es')['ElImage']
     ElInput: typeof import('element-plus/es')['ElInput']
+    ElInputNumber: typeof import('element-plus/es')['ElInputNumber']
     ElOption: typeof import('element-plus/es')['ElOption']
     ElRadioButton: typeof import('element-plus/es')['ElRadioButton']
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
@@ -32,6 +36,7 @@ declare module '@vue/runtime-core' {
     ElUpload: typeof import('element-plus/es')['ElUpload']
     Icon: typeof import('./../components/Icon/Icon.vue')['default']
     LoginDialog: typeof import('./../components/Login/LoginDialog.vue')['default']
+    PlaybackPanel: typeof import('./../components/Player/PlaybackPanel.vue')['default']
     RegisterDialog: typeof import('./../components/Login/RegisterDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']

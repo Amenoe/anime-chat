@@ -93,14 +93,33 @@
         <p class="summary">{{ detailData.summary }}</p>
       </section>
 
+      <!-- 在线播放（BT/磁力 → 服务端下载 → 流式播放） -->
+      <section class="section">
+        <div class="section__header">
+          <span class="section__title">播放</span>
+        </div>
+        <PlaybackPanel
+          ref="playbackRef"
+          :bangumi-id="anime_id"
+          :title="displayName"
+          :alt-title="detailData.name !== detailData.name_cn ? detailData.name : undefined"
+        />
+      </section>
+
       <!-- 剧集列表 -->
       <section v-if="episodes.length" class="section">
         <div class="section__header">
           <span class="section__title">剧集</span>
-          <span class="section__count">共 {{ episodes.length }} 话</span>
+          <span class="section__count">共 {{ episodes.length }} 话 · 点击播放</span>
         </div>
         <div class="ep-grid">
-          <div v-for="ep in episodes" :key="ep.id" class="ep-card" :title="ep.name_cn || ep.name">
+          <div
+            v-for="ep in episodes"
+            :key="ep.id"
+            class="ep-card"
+            :title="(ep.name_cn || ep.name) + '（点击自动搜源播放）'"
+            @click="onEpClick(ep.sort)"
+          >
             <span class="ep-card__num">{{ ep.sort }}</span>
             <div class="ep-card__info">
               <span class="ep-card__name">{{ ep.name_cn || ep.name }}</span>
@@ -143,6 +162,7 @@ import { useHomeStore } from '@/stores/modules/home'
 import { useLoginStore } from '@/stores/modules/login'
 import { useUserAnimeStore } from '@/stores/modules/userAnime'
 import type { UserAnimeStatus } from '@/api/types'
+import PlaybackPanel from '@/components/Player/PlaybackPanel.vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -151,6 +171,7 @@ const anime_id = Number(route.params.anime_id)
 const homeStore = useHomeStore()
 const loginStore = useLoginStore()
 const userAnimeStore = useUserAnimeStore()
+const playbackRef = ref<InstanceType<typeof PlaybackPanel> | null>(null)
 
 homeStore.detailDataAction(anime_id)
 
@@ -209,6 +230,14 @@ const ensureLogin = () => {
 const newChatClick = () => {
   if (!ensureLogin()) return
   router.push('/chat')
+}
+
+/** 点击集数：自动搜磁力 → qB 下载 → 播放 */
+function onEpClick(sort: number) {
+  if (!ensureLogin()) return
+  const panel = document.querySelector('.playback-panel')
+  panel?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  playbackRef.value?.playEpisode(sort)
 }
 
 async function onCollectCommand(cmd: string) {
@@ -471,7 +500,7 @@ async function onCollectCommand(cmd: string) {
   background: @card-bg;
   border-radius: 8px;
   padding: 10px 12px;
-  cursor: default;
+  cursor: pointer;
   transition: background 0.2s, box-shadow 0.2s;
   border: 1px solid transparent;
 
