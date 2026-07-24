@@ -1,7 +1,7 @@
 # 放映室（一起看）设计规格
 
 日期：2026-07-25  
-状态：待用户审查后进入实现计划  
+状态：已确认，进入实现计划  
 范围：将现有「每番聊天室」升级为「放映室」——左播放、右聊天/列表，主机强同步进度。
 
 ---
@@ -30,39 +30,52 @@
 
 ## 2. 产品决策（已确认）
 
-| 项       | 决策                                                                    |
-| -------- | ----------------------------------------------------------------------- |
-| 架构路径 | 方案 A：扩展现有 `Group` + Socket，合并聊天为放映室                     |
-| 房间标识 | `season_id` = **随机生成的房间 key**（字符串），与播放内容/番剧分季无关 |
-| 内容绑定 | 房间关联 `anime_id` + **集数相关 id**（`episode_id` / `episode_sort`）  |
-| 多厅     | 同一 `anime_id` 可有多间房（不同 `season_id`）                          |
-| 进度同步 | 强同步：主机 pause/play/seek/切集广播，观众强制跟随                     |
-| 房主离开 | 有人 → 转让；无人 → 销毁                                                |
-| 纯聊天   | 不保留                                                                  |
+| 项           | 决策                                                                                  |
+| ------------ | ------------------------------------------------------------------------------------- |
+| 架构路径     | 方案 A：扩展现有 `Group` + Socket，合并聊天为放映室                                   |
+| 房间业务 key | **`season_id`**（随机字符串，全局唯一）——**不是** `session_id`，**不是** `episode_id` |
+| 内容绑定     | `anime_id` + `episode_id`（集身份）+ `episode_sort`（冗余展示/搜源）                  |
+| 多厅         | 同一 `anime_id` 可有多间房（不同 `season_id`）                                        |
+| 进度同步     | 强同步：主机 pause/play/seek/切集广播，观众强制跟随                                   |
+| 房主离开     | 有人 → 转让；无人 → 销毁                                                              |
+| 纯聊天       | 不保留                                                                                |
 
 ### 2.1 字段语义（重要）
 
-#### `season_id`（房间 key）
+#### ID 分层（禁止混淆）
 
+| 名称                  | 是什么                               | 不是什么                          |
+| --------------------- | ------------------------------------ | --------------------------------- |
+| `group_id`            | 表内部 PK（uuid）                    | 对外分享 key                      |
+| **`season_id`**       | **房间业务 key**（随机生成，UNIQUE） | 番剧分季；也**不要**叫 session_id |
+| `episode_id`          | 当前/建房关联的 **Bangumi 集 id**    | 房间主键                          |
+| `episode_sort`        | 集序号冗余（第 n 话）                | 房间主键                          |
+| `playback_session_id` | Nest **播放会话** id（BT/流）        | 放映室 id                         |
+
+#### `season_id`（房间 key，已定名）
+
+- **固定使用字段名 `season_id`**，不使用 `session_id` 作为房间 id（避免与 `playback_session` 混淆）。
 - **不是** Bangumi 分季 id，也不是「第几季」。
-- 类型：`varchar(32)`（或 36），创建房间时服务端生成（如短 UUID / nanoid）。
-- 用途：房间对外唯一业务 key；邀请链接、join 参数使用它。
-- 全局唯一（或至少在业务上唯一索引）。
+- 类型：`varchar(32)`（或 36），创建房间时服务端生成（短 UUID / nanoid）。
+- 用途：邀请链接、`joinRoom`、路由 `/room/:seasonId`。
+- 全局 **UNIQUE**。
 
-#### 集数相关 id（房间内容）
+#### 集数相关字段（仅内容，非房间主键）
 
-| 字段                    | 类型           | 说明                                   |
-| ----------------------- | -------------- | -------------------------------------- |
-| `episode_id`            | int nullable   | Bangumi 剧集 id（`ep.id`），有则优先用 |
-| `episode_sort`          | float nullable | 集序号（第 n 话，对应 Bangumi `sort`） |
-| `playback_episode_sort` | float nullable | **当前正在播**的集（房主可切集后更新） |
+| 字段                    | 类型           | 说明                                                  |
+| ----------------------- | -------------- | ----------------------------------------------------- |
+| `episode_id`            | int nullable   | 集身份（Bangumi `ep.id`），有则必写；**不是房间主键** |
+| `episode_sort`          | float nullable | 冗余：第 n 话，展示 + 搜源 + 列表筛选                 |
+| `playback_episode_id`   | int nullable   | **当前正在播**的集 id                                 |
+| `playback_episode_sort` | float nullable | **当前正在播**的集序号                                |
 
 约定：
 
-- 用户从详情页点「第 3 话」创建房间时：写入 `episode_id`（若有）、`episode_sort=3`，并可作为初始 `playback_episode_sort`。
-- 列表/入口展示：「xxx 第 3 话放映室」。
-- 查询「该番是否已有放映室」：按 `anime_id` 列出进行中的房间；可选再按 `episode_sort` 过滤「同集房间」。
-- 房主切集：更新 `playback_episode_sort`（及可选 `episode_id`）；**不改变** `season_id`。
+- 房间唯一身份 = **`season_id`**（+ 内部 `group_id`）。
+- `episode_id` 负责「播哪一集」；`episode_sort` 负责「第几话怎么显示/搜」；二者都**不能**替代 `season_id`。
+- 建房：写 `episode_id`（若有）+ `episode_sort`，并初始化 `playback_episode_*`。
+- 切集：只改 `playback_episode_*`（及展示用 ep 字段策略），**永不改** `season_id`。
+- 同集判断：有 `episode_id` 用 id，否则用 `episode_sort`。
 
 ---
 
@@ -124,25 +137,25 @@
 
 ### 5.1 扩展 `group`（放映室）
 
-| 字段                    | 类型               | 说明                                       |
-| ----------------------- | ------------------ | ------------------------------------------ |
-| `group_id`              | uuid PK            | 内部主键（Socket room 可用此或 season_id） |
-| `season_id`             | varchar(32) UNIQUE | **随机房间 key**，创建时生成               |
-| `anime_id`              | int                | 番剧 Bangumi id                            |
-| `episode_id`            | int nullable       | 创建时/当前关联的 Bangumi 集 id            |
-| `episode_sort`          | float nullable     | 创建时关联的集序号（入口展示）             |
-| `host_user_id`          | varchar            | 当前房主                                   |
-| `is_public`             | tinyint default 1  | 公开放映                                   |
-| `notice`                | 已有               | 公告                                       |
-| `group_name`            | 已有               | 展示名，可默认「{番名} 第 n 话」           |
-| `playback_status`       | varchar            | `idle` / `playing` / `paused`              |
-| `playback_episode_sort` | float nullable     | **当前播放**集序号                         |
-| `playback_episode_id`   | int nullable       | **当前播放** Bangumi 集 id                 |
-| `playback_session_id`   | varchar nullable   | Nest playback session                      |
-| `playback_stream_url`   | text nullable      | 相对 stream 路径（无 JWT）                 |
-| `playback_position`     | float default 0    | 秒                                         |
-| `playback_updated_at`   | datetime nullable  | 状态版本时间                               |
-| `playback_title`        | varchar nullable   | 当前资源标题                               |
+| 字段                    | 类型               | 说明                                        |
+| ----------------------- | ------------------ | ------------------------------------------- |
+| `group_id`              | uuid PK            | 内部主键                                    |
+| `season_id`             | varchar(32) UNIQUE | **房间业务 key**（随机生成；对外进房/分享） |
+| `anime_id`              | int                | 番剧 Bangumi id                             |
+| `episode_id`            | int nullable       | 关联集 id（内容字段，**非房间主键**）       |
+| `episode_sort`          | float nullable     | 关联集序号冗余（展示/搜源，**非房间主键**） |
+| `host_user_id`          | varchar            | 当前房主                                    |
+| `is_public`             | tinyint default 1  | 公开放映                                    |
+| `notice`                | 已有               | 公告                                        |
+| `group_name`            | 已有               | 展示名，可默认「{番名} 第 n 话」            |
+| `playback_status`       | varchar            | `idle` / `playing` / `paused`               |
+| `playback_episode_sort` | float nullable     | **当前播放**集序号                          |
+| `playback_episode_id`   | int nullable       | **当前播放** Bangumi 集 id                  |
+| `playback_session_id`   | varchar nullable   | Nest playback session                       |
+| `playback_stream_url`   | text nullable      | 相对 stream 路径（无 JWT）                  |
+| `playback_position`     | float default 0    | 秒                                          |
+| `playback_updated_at`   | datetime nullable  | 状态版本时间                                |
+| `playback_title`        | varchar nullable   | 当前资源标题                                |
 
 约束：
 
