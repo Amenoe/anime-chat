@@ -1,5 +1,5 @@
 <template>
-  <div class="anime-player">
+  <div class="anime-player" :class="{ 'anime-player--controlled': controlled }">
     <div ref="elRef" class="anime-player__el" />
     <p v-if="hint" class="anime-player__hint">{{ hint }}</p>
   </div>
@@ -14,6 +14,15 @@ const props = defineProps<{
   url?: string | null
   /** 标题展示 */
   title?: string
+  /** 观众模式：禁用播放器交互控件 */
+  controlled?: boolean
+}>()
+
+const emit = defineEmits<{
+  timeupdate: [currentTime: number]
+  play: [currentTime: number]
+  pause: [currentTime: number]
+  seek: [currentTime: number]
 }>()
 
 const elRef = ref<HTMLDivElement | null>(null)
@@ -36,46 +45,88 @@ function createPlayer(url: string) {
   destroy()
   hint.value = ''
 
-  const isHls = /\.m3u8(\?|$)/i.test(url)
+  const isHls = /\.m3u8(\?|$)/i.test(url) || /[?&]type=m3u8\b/i.test(url)
+  const readonly = !!props.controlled
 
-  player = new Artplayer({
+  const options: ConstructorParameters<typeof Artplayer>[0] = {
     container: elRef.value,
     url,
     volume: 0.7,
     autoplay: true,
-    pip: true,
+    pip: !readonly,
     fullscreen: true,
     fullscreenWeb: true,
-    setting: true,
-    playbackRate: true,
-    aspectRatio: true,
+    setting: !readonly,
+    playbackRate: !readonly,
+    aspectRatio: !readonly,
     theme: '#68c6bd',
     lang: 'zh-cn',
     moreVideoAttr: {
       crossOrigin: 'anonymous',
     },
-    customType: isHls
-      ? {
-          m3u8(video: HTMLVideoElement, u: string, art: Artplayer) {
-            if (Hls.isSupported()) {
-              const hls = new Hls()
-              hls.loadSource(u)
-              hls.attachMedia(video)
-              art.on('destroy', () => hls.destroy())
-            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-              video.src = u
-            } else {
-              art.notice.show = '当前浏览器不支持 HLS'
+  }
+
+  if (isHls) {
+    options.type = 'm3u8'
+    options.customType = {
+      m3u8(video: HTMLVideoElement, u: string, art: Artplayer) {
+        if (Hls.isSupported()) {
+          const hls = new Hls({
+            enableWorker: true,
+            xhrSetup(xhr) {
+              xhr.withCredentials = false
+            },
+          })
+          hls.loadSource(u)
+          hls.attachMedia(video)
+          art.on('destroy', () => {
+            try {
+              hls.destroy()
+            } catch {
+              /* ignore */
             }
-          },
+          })
+        } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = u
+        } else {
+          art.notice.show = '当前浏览器不支持 HLS'
         }
-      : undefined,
-    type: isHls ? 'm3u8' : undefined,
+      },
+    }
+  }
+
+  player = new Artplayer(options)
+
+  player.on('video:timeupdate', () => {
+    if (player) emit('timeupdate', player.currentTime)
+  })
+  player.on('play', () => {
+    if (player) emit('play', player.currentTime)
+  })
+  player.on('pause', () => {
+    if (player) emit('pause', player.currentTime)
+  })
+  player.on('seek', () => {
+    if (player) emit('seek', player.currentTime)
   })
 
   player.on('error', () => {
-    hint.value = '播放失败：可能仍在缓冲、格式不支持（如 mkv）或源不可用'
+    hint.value = '播放失败：请更换数据源重试'
   })
+}
+
+function seekTo(time: number) {
+  if (player) player.currentTime = time
+}
+
+function setPaused(paused: boolean) {
+  if (!player) return
+  if (paused) player.pause()
+  else player.play()
+}
+
+function getPlayer(): Artplayer | null {
+  return player
 }
 
 watch(
@@ -91,6 +142,8 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => destroy())
+
+defineExpose({ seekTo, setPaused, getPlayer })
 </script>
 
 <style scoped lang="less">
@@ -113,6 +166,10 @@ onBeforeUnmount(() => destroy())
     font-size: 12px;
     color: var(--font-unactive-color);
     background: var(--aside-bg-color);
+  }
+
+  &--controlled &__el {
+    pointer-events: none;
   }
 }
 </style>

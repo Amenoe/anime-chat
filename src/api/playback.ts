@@ -30,6 +30,7 @@ export type CreatePlaybackBody = {
   bangumiId?: number
   episodeSort?: number
   fileIndex?: number
+  groupId?: string
 }
 
 export type StreamPlaybackBody = {
@@ -38,6 +39,7 @@ export type StreamPlaybackBody = {
   headers?: Record<string, string>
   bangumiId?: number
   episodeSort?: number
+  groupId?: string
 }
 
 export type AutoPlaybackBody = {
@@ -57,6 +59,9 @@ export type PlayCandidate = {
   score: number
   headers?: Record<string, string>
   episodeSort?: number
+  channel?: string
+  /** 是否已是 m3u8/mp4；false 表示剧集播放页，点播放时后端再解析 */
+  resolved?: boolean
 }
 
 export function createPlaybackSession(data: CreatePlaybackBody) {
