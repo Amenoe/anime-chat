@@ -6,11 +6,11 @@
         clearable
         class="playback-panel__input"
         placeholder="magnet: 或直链 m3u8 / mp4"
-        :disabled="loading"
+        :disabled="playing"
         @keyup.enter="startManual"
       />
-      <button class="playback-panel__btn" type="button" :disabled="loading" @click="startManual">
-        {{ loading ? '处理中…' : '播放' }}
+      <button class="playback-panel__btn" type="button" :disabled="playing" @click="startManual">
+        {{ playing ? '处理中…' : '播放' }}
       </button>
     </div>
 
@@ -28,7 +28,7 @@
 
     <AnimePlayer v-if="playUrl" :url="playUrl" :title="title" />
 
-    <!-- 点集搜源抽屉 -->
+    <!-- 点集搜源抽屉：有结果即可点，不必等全部搜完 -->
     <el-drawer
       v-model="drawerVisible"
       direction="rtl"
@@ -39,8 +39,9 @@
       @closed="onDrawerClosed"
     >
       <div class="search-drawer__body">
-        <div v-if="!searchRows.length" class="search-drawer__empty">
-          <el-empty description="暂无可用站点，请到个人中心配置数据源" />
+        <div v-if="searching" class="search-drawer__hint">搜索中，播放会暂停搜索</div>
+        <div v-if="!searchRows.length && !searching" class="search-drawer__empty">
+          <el-empty description="暂无可用站点" />
         </div>
         <div
           v-for="row in searchRows"
@@ -60,17 +61,19 @@
             <div v-if="row.error" class="search-row__err">{{ row.error }}</div>
             <div v-if="row.candidates.length" class="search-row__hits">
               <button
-                v-for="(c, i) in row.candidates.slice(0, 5)"
+                v-for="(c, i) in row.candidates.slice(0, 8)"
                 :key="i + c.uri"
                 type="button"
                 class="hit"
-                :disabled="loading"
+                :disabled="playing"
                 :title="c.uri"
                 @click="playCandidate(c)"
               >
-                <span class="hit__kind">{{ c.kind === 'stream' ? '流' : 'BT' }}</span>
-                <span class="hit__title">{{ c.title || c.uri }}</span>
-                <span class="hit__play">播放</span>
+                <span class="hit__kind">{{
+                  c.kind === 'bt' ? 'BT' : c.resolved ? '直链' : '线路'
+                }}</span>
+                <span class="hit__title">{{ c.title || c.channel || c.uri }}</span>
+                <span class="hit__play">{{ playing ? '…' : '播放' }}</span>
               </button>
             </div>
           </div>
@@ -122,7 +125,10 @@ type SearchRow = {
 
 const source = ref('')
 const episodeSort = ref<number | undefined>(undefined)
-const loading = ref(false)
+/** 正在创建播放会话（点了某个候选） */
+const playing = ref(false)
+/** 后台仍在搜其它源 */
+const searching = ref(false)
 const session = ref<PlaybackSessionView | null>(null)
 const sessionId = ref('')
 const playUrl = ref<string | null>(null)
@@ -135,7 +141,8 @@ let searchToken = 0
 const drawerTitle = computed(() => {
   const ep = searchingEpisode.value
   const name = props.title || ''
-  return ep ? `${name} · 第 ${ep} 话` : '搜源'
+  const base = ep ? `${name} · 第 ${ep} 话` : '搜源'
+  return searching.value ? `${base}（搜索中）` : base
 })
 
 const statusLabel = computed(() => {
@@ -232,7 +239,11 @@ async function ensureCatalogEntries(): Promise<MediaCatalogEntry[]> {
 }
 
 async function playCandidate(c: PlayCandidate) {
-  loading.value = true
+  if (playing.value) return
+  playing.value = true
+  // 选中后停止继续搜源，避免占带宽
+  searchToken++
+  searching.value = false
   playUrl.value = null
   stopPoll()
   try {
@@ -257,11 +268,11 @@ async function playCandidate(c: PlayCandidate) {
   } catch {
     /* interceptor */
   } finally {
-    loading.value = false
+    playing.value = false
   }
 }
 
-/** 点集：打开抽屉，并行搜各启用站点 */
+/** 点集：打开抽屉，并行搜各启用站点；任一源有结果即可点播放 */
 async function playEpisode(sort: number) {
   episodeSort.value = sort
   searchingEpisode.value = sort
@@ -271,7 +282,8 @@ async function playEpisode(sort: number) {
   const token = ++searchToken
   drawerVisible.value = true
   searchRows.value = []
-  loading.value = true
+  searching.value = true
+  playing.value = false
 
   try {
     const entries = await ensureCatalogEntries()
@@ -288,7 +300,7 @@ async function playEpisode(sort: number) {
       subscriptionName: e.subscriptionName,
     }))
 
-    // 并发度限制
+    // 并发搜源；每个源完成后立刻写入 candidates，UI 可马上点
     const concurrency = 4
     let idx = 0
     const runNext = async (): Promise<void> => {
@@ -296,7 +308,8 @@ async function playEpisode(sort: number) {
       const i = idx++
       if (i >= searchRows.value.length) return
       const row = searchRows.value[i]
-      row.status = 'searching'
+      // 用 splice 触发列表更新更稳
+      patchRow(i, { status: 'searching' })
       try {
         const hits =
           (await searchOneSource({
@@ -309,32 +322,46 @@ async function playEpisode(sort: number) {
             subscriptionName: row.subscriptionName,
           })) || []
         if (token !== searchToken) return
-        row.candidates = hits
-        row.status = hits.length ? 'done' : 'empty'
+        patchRow(i, {
+          candidates: hits,
+          status: hits.length ? 'done' : 'empty',
+          error: undefined,
+        })
       } catch (e: any) {
         if (token !== searchToken) return
-        row.status = 'error'
-        row.error = e?.message || '搜索失败'
+        patchRow(i, {
+          status: 'error',
+          error: e?.message || '搜索失败',
+        })
       }
       await runNext()
     }
 
-    await Promise.all(Array.from({ length: concurrency }, () => runNext()))
+    // 不 await 到全部结束再解锁：有结果即可点；后台继续搜
+    void Promise.all(Array.from({ length: concurrency }, () => runNext())).finally(() => {
+      if (token === searchToken) searching.value = false
+    })
   } catch {
-    /* interceptor */
-  } finally {
-    if (token === searchToken) loading.value = false
+    if (token === searchToken) searching.value = false
   }
+}
+
+function patchRow(index: number, patch: Partial<SearchRow>) {
+  const cur = searchRows.value[index]
+  if (!cur) return
+  const next = { ...cur, ...patch }
+  searchRows.value.splice(index, 1, next)
 }
 
 function onDrawerClosed() {
   searchToken++
+  searching.value = false
 }
 
 async function startManual() {
   const uri = source.value.trim()
   if (!uri) return
-  loading.value = true
+  playing.value = true
   playUrl.value = null
   stopPoll()
   try {
@@ -357,7 +384,7 @@ async function startManual() {
   } catch {
     /* interceptor */
   } finally {
-    loading.value = false
+    playing.value = false
   }
 }
 
@@ -365,6 +392,7 @@ defineExpose({ playEpisode })
 
 onBeforeUnmount(() => {
   searchToken++
+  searching.value = false
   stopPoll()
 })
 </script>
@@ -454,6 +482,12 @@ onBeforeUnmount(() => {
     flex-direction: column;
     gap: 10px;
     padding-bottom: 24px;
+  }
+
+  &__hint {
+    font-size: 12px;
+    color: var(--primary-color);
+    padding: 0 2px 4px;
   }
 
   &__empty {
