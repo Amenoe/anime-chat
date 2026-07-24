@@ -35,6 +35,11 @@ const routes: RouteRecordRaw[] = [
     name: 'Chat',
     component: () => import('@/views/chat/Chat.vue'),
   },
+  {
+    path: '/room/:seasonId',
+    name: 'Room',
+    component: () => import('@/views/room/Room.vue'),
+  },
 ]
 const router = createRouter({
   history: createWebHistory(import.meta.env.VITE_BASE_URL),
