@@ -110,14 +110,14 @@
       <section v-if="episodes.length" class="section">
         <div class="section__header">
           <span class="section__title">剧集</span>
-          <span class="section__count">共 {{ episodes.length }} 话 · 点击播放</span>
+          <span class="section__count">共 {{ episodes.length }} 话 · 点击进入放映室</span>
         </div>
         <div class="ep-grid">
           <div
             v-for="ep in episodes"
             :key="ep.id"
             class="ep-card"
-            :title="(ep.name_cn || ep.name) + '（点击自动搜源播放）'"
+            :title="(ep.name_cn || ep.name) + '（点击进入放映室）'"
             @click="onEpClick(ep.sort)"
           >
             <span class="ep-card__num">{{ ep.sort }}</span>
@@ -151,7 +151,9 @@
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <button class="action-btn action-btn--primary" @click="newChatClick">加入聊天室</button>
+        <button class="action-btn action-btn--primary" @click="enterOrCreateRoom()">
+          进入放映室
+        </button>
       </div>
     </template>
   </div>
@@ -163,6 +165,8 @@ import { useLoginStore } from '@/stores/modules/login'
 import { useUserAnimeStore } from '@/stores/modules/userAnime'
 import type { UserAnimeStatus } from '@/api/types'
 import PlaybackPanel from '@/components/Player/PlaybackPanel.vue'
+import { listRooms, createRoom } from '@/api/room'
+import { appConfirm } from '@/composables/useConfirm'
 
 const router = useRouter()
 const route = useRoute()
@@ -227,17 +231,51 @@ const ensureLogin = () => {
   return true
 }
 
-const newChatClick = () => {
+const roomLoading = ref(false)
+
+async function enterOrCreateRoom(sort?: number) {
   if (!ensureLogin()) return
-  router.push('/chat')
+  if (roomLoading.value) return
+  roomLoading.value = true
+  try {
+    const rooms = await listRooms({ anime_id })
+
+    if (rooms.length > 0) {
+      const room = rooms[0]
+      const epInfo = room.playback_episode_sort ? ` · 当前第${room.playback_episode_sort}话` : ''
+      const ok = await appConfirm({
+        title: '已有放映室',
+        message: `${room.group_name}${epInfo}\n是否进入？`,
+        confirmText: '进入',
+        cancelText: '取消',
+      })
+      if (!ok) return
+      router.push(`/room/${room.season_id}`)
+    } else {
+      const ep = sort != null ? episodes.value.find((e) => e.sort === sort) : undefined
+      const label = sort != null ? ` 第${sort}话` : ''
+      const ok = await appConfirm({
+        title: '创建放映室',
+        message: `是否为「${displayName.value}${label}」创建放映室？`,
+        confirmText: '创建',
+        cancelText: '取消',
+      })
+      if (!ok) return
+      const room = await createRoom({
+        anime_id,
+        episode_id: ep?.id,
+        episode_sort: sort,
+        group_name: `${displayName.value}${label}`,
+      })
+      router.push(`/room/${room.season_id}`)
+    }
+  } finally {
+    roomLoading.value = false
+  }
 }
 
-/** 点击集数：自动搜磁力 → qB 下载 → 播放 */
 function onEpClick(sort: number) {
-  if (!ensureLogin()) return
-  const panel = document.querySelector('.playback-panel')
-  panel?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  playbackRef.value?.playEpisode(sort)
+  enterOrCreateRoom(sort)
 }
 
 async function onCollectCommand(cmd: string) {
