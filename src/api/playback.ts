@@ -22,7 +22,7 @@ export type PlaybackSessionView = {
   bangumiId: number | null
   episodeSort: number | null
   playUrl: string | null
-  playMode: 'progressive' | 'hls'
+  playMode: 'progressive' | 'stream' | 'hls'
 }
 
 export type CreatePlaybackBody = {
@@ -30,6 +30,14 @@ export type CreatePlaybackBody = {
   bangumiId?: number
   episodeSort?: number
   fileIndex?: number
+}
+
+export type StreamPlaybackBody = {
+  streamUrl: string
+  title?: string
+  headers?: Record<string, string>
+  bangumiId?: number
+  episodeSort?: number
 }
 
 export type AutoPlaybackBody = {
@@ -40,11 +48,15 @@ export type AutoPlaybackBody = {
   fileIndex?: number
 }
 
-export type MagnetCandidate = {
+export type PlayCandidate = {
+  kind: 'bt' | 'stream'
   title: string
   uri: string
-  source: string
+  sourceName: string
+  subscriptionName: string
   score: number
+  headers?: Record<string, string>
+  episodeSort?: number
 }
 
 export function createPlaybackSession(data: CreatePlaybackBody) {
@@ -54,11 +66,20 @@ export function createPlaybackSession(data: CreatePlaybackBody) {
   })
 }
 
-/** 按番名+集数自动搜磁力并创建会话 */
+export function createStreamPlaybackSession(data: StreamPlaybackBody) {
+  return request.post<PlaybackSessionView>({
+    url: '/playback/sessions/stream',
+    data,
+  })
+}
+
+/** 数据源搜索 → 优先流媒体，否则 BT */
 export function createAutoPlaybackSession(data: AutoPlaybackBody) {
   return request.post<PlaybackSessionView>({
     url: '/playback/sessions/auto',
     data,
+    // 搜源可能跨多个外网站点，需长于默认 10s
+    timeout: 60000,
   })
 }
 
@@ -68,14 +89,31 @@ export function getPlaybackSession(id: string) {
   })
 }
 
-export function searchMagnets(keyword: string, episodeSort: number, altKeyword?: string) {
-  return request.get<MagnetCandidate[]>({
-    url: '/playback/magnets',
+export function searchPlaybackSources(keyword: string, episodeSort: number, altKeyword?: string) {
+  return request.get<PlayCandidate[]>({
+    url: '/playback/search',
     params: { keyword, episodeSort, altKeyword },
+    timeout: 60000,
   })
 }
 
-/** 给 <video>/Artplayer 用的可带 token 的同源流地址 */
+/** 单站点搜索（抽屉） */
+export function searchOneSource(data: {
+  factoryId: string
+  name: string
+  searchConfig: Record<string, any>
+  keyword: string
+  episodeSort: number
+  altKeyword?: string
+  subscriptionName?: string
+}) {
+  return request.post<PlayCandidate[]>({
+    url: '/playback/search-one',
+    data,
+    timeout: 30000,
+  })
+}
+
 export function buildPlaybackStreamUrl(sessionId: string) {
   const token = localCache.getCache('token') || ''
   const base = import.meta.env.VITE_BASE_API || '/api'

@@ -2,10 +2,10 @@
   <div class="playback-panel">
     <div class="playback-panel__row">
       <el-input
-        v-model="magnet"
+        v-model="source"
         clearable
         class="playback-panel__input"
-        placeholder="粘贴 magnet: 或种子链接（也可点击下方剧集自动搜源）"
+        placeholder="magnet: 或直链 m3u8 / mp4"
         :disabled="loading"
         @keyup.enter="startManual"
       />
@@ -16,6 +16,9 @@
 
     <div v-if="session" class="playback-panel__status">
       <span class="tag">{{ statusLabel }}</span>
+      <span v-if="session.playMode" class="mode">{{
+        session.playMode === 'stream' ? '流媒体' : 'BT'
+      }}</span>
       <span class="meta">{{ progressText }}</span>
       <span v-if="session.fileName" class="file" :title="session.fileName">{{
         session.fileName
@@ -24,38 +27,121 @@
     </div>
 
     <AnimePlayer v-if="playUrl" :url="playUrl" :title="title" />
+
+    <!-- 点集搜源抽屉 -->
+    <el-drawer
+      v-model="drawerVisible"
+      direction="rtl"
+      size="420px"
+      :title="drawerTitle"
+      class="search-drawer"
+      destroy-on-close
+      @closed="onDrawerClosed"
+    >
+      <div class="search-drawer__body">
+        <div v-if="!searchRows.length" class="search-drawer__empty">
+          <el-empty description="暂无可用站点，请到个人中心配置数据源" />
+        </div>
+        <div
+          v-for="row in searchRows"
+          :key="row.key"
+          class="search-row"
+          :class="`search-row--${row.status}`"
+        >
+          <el-avatar :size="36" :src="row.iconUrl || undefined" class="search-row__avatar">
+            {{ (row.name || '?').slice(0, 1) }}
+          </el-avatar>
+          <div class="search-row__main">
+            <div class="search-row__head">
+              <span class="search-row__kind">{{ row.factoryId === 'rss' ? 'BT' : '流' }}</span>
+              <span class="search-row__name" :title="row.name">{{ row.name }}</span>
+              <span class="search-row__st">{{ statusText(row.status) }}</span>
+            </div>
+            <div v-if="row.error" class="search-row__err">{{ row.error }}</div>
+            <div v-if="row.candidates.length" class="search-row__hits">
+              <button
+                v-for="(c, i) in row.candidates.slice(0, 5)"
+                :key="i + c.uri"
+                type="button"
+                class="hit"
+                :disabled="loading"
+                :title="c.uri"
+                @click="playCandidate(c)"
+              >
+                <span class="hit__kind">{{ c.kind === 'stream' ? '流' : 'BT' }}</span>
+                <span class="hit__title">{{ c.title || c.uri }}</span>
+                <span class="hit__play">播放</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </el-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
 import {
   buildPlaybackStreamUrl,
-  createAutoPlaybackSession,
   createPlaybackSession,
+  createStreamPlaybackSession,
   getPlaybackSession,
+  searchOneSource,
+  type PlayCandidate,
   type PlaybackSessionView,
 } from '@/api/playback'
+import { listMediaSourceCatalog, type MediaCatalogEntry } from '@/api/media-source'
+import {
+  applyCatalogPrefs,
+  isCatalogEnabled,
+  loadCatalogCache,
+  loadCatalogPrefs,
+  saveCatalogCache,
+} from '@/utils/media-catalog-cache'
 import AnimePlayer from './AnimePlayer.vue'
 
 const props = defineProps<{
   bangumiId: number
   title?: string
-  /** 日文原名等，用于备用搜索 */
   altTitle?: string
 }>()
 
-const magnet = ref('')
+type RowStatus = 'pending' | 'searching' | 'done' | 'empty' | 'error'
+
+type SearchRow = {
+  key: string
+  name: string
+  factoryId: string
+  iconUrl: string
+  status: RowStatus
+  error?: string
+  candidates: PlayCandidate[]
+  searchConfig: Record<string, any>
+  subscriptionName: string
+}
+
+const source = ref('')
 const episodeSort = ref<number | undefined>(undefined)
 const loading = ref(false)
 const session = ref<PlaybackSessionView | null>(null)
 const sessionId = ref('')
 const playUrl = ref<string | null>(null)
+const drawerVisible = ref(false)
+const searchRows = ref<SearchRow[]>([])
+const searchingEpisode = ref(0)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let searchToken = 0
+
+const drawerTitle = computed(() => {
+  const ep = searchingEpisode.value
+  const name = props.title || ''
+  return ep ? `${name} · 第 ${ep} 话` : '搜源'
+})
 
 const statusLabel = computed(() => {
   const m: Record<string, string> = {
     created: '已创建',
-    fetching: '获取种子中',
+    fetching: '获取中',
     downloading: '下载中',
     playable: '可播放',
     ready: '已完成',
@@ -67,6 +153,7 @@ const statusLabel = computed(() => {
 const progressText = computed(() => {
   const s = session.value
   if (!s) return ''
+  if (s.playMode === 'stream') return '直链'
   const pct = Math.round((s.progress || 0) * 100)
   const dl = formatBytes(s.downloadedBytes)
   const total = formatBytes(s.sizeBytes)
@@ -83,6 +170,17 @@ function formatBytes(n: number) {
     i++
   }
   return `${v.toFixed(i ? 1 : 0)} ${u[i]}`
+}
+
+function statusText(st: RowStatus) {
+  const m: Record<RowStatus, string> = {
+    pending: '等待',
+    searching: '搜索中',
+    done: '有结果',
+    empty: '无结果',
+    error: '失败',
+  }
+  return m[st]
 }
 
 function stopPoll() {
@@ -116,57 +214,146 @@ function beginSession(s: PlaybackSessionView) {
   playUrl.value = null
   maybeSetPlayUrl(s)
   stopPoll()
-  pollTimer = setInterval(refresh, 3000)
+  if (s.status !== 'ready' && s.status !== 'failed') {
+    pollTimer = setInterval(refresh, 3000)
+  }
 }
 
-/** 详情页点击集数：自动搜磁力播放 */
-async function playEpisode(sort: number) {
-  episodeSort.value = sort
-  const keyword = (props.title || '').trim()
-  if (!keyword) {
-    ElNotification({ type: 'warning', title: '缺少番剧名称，无法自动搜源' })
-    return
+async function ensureCatalogEntries(): Promise<MediaCatalogEntry[]> {
+  const prefs = loadCatalogPrefs()
+  let entries = loadCatalogCache()
+  if (!entries?.length) {
+    const res = await listMediaSourceCatalog()
+    entries = res?.entries || []
+    if (entries.length) saveCatalogCache(entries)
   }
+  const merged = applyCatalogPrefs(entries || [], prefs)
+  return merged.filter((e) => isCatalogEnabled(e.key, prefs))
+}
+
+async function playCandidate(c: PlayCandidate) {
   loading.value = true
   playUrl.value = null
   stopPoll()
   try {
-    const s = await createAutoPlaybackSession({
-      keyword,
-      episodeSort: sort,
-      bangumiId: props.bangumiId,
-      altKeyword: props.altTitle,
-    })
-    beginSession(s)
-    ElNotification({ type: 'success', title: `第 ${sort} 话：已找到资源并开始下载` })
+    if (c.kind === 'stream') {
+      const s = await createStreamPlaybackSession({
+        streamUrl: c.uri,
+        title: c.title,
+        headers: c.headers,
+        bangumiId: props.bangumiId,
+        episodeSort: episodeSort.value,
+      })
+      beginSession(s)
+    } else {
+      const s = await createPlaybackSession({
+        uri: c.uri,
+        bangumiId: props.bangumiId,
+        episodeSort: episodeSort.value,
+      })
+      beginSession(s)
+    }
+    drawerVisible.value = false
   } catch {
-    ElNotification({
-      type: 'warning',
-      title: '自动搜源失败',
-      message: '可在上方手动粘贴磁力后点击播放',
-    })
+    /* interceptor */
   } finally {
     loading.value = false
   }
 }
 
-async function startManual() {
-  const uri = magnet.value.trim()
-  if (!uri) {
-    ElNotification({ type: 'warning', title: '请填写磁力或种子链接' })
-    return
+/** 点集：打开抽屉，并行搜各启用站点 */
+async function playEpisode(sort: number) {
+  episodeSort.value = sort
+  searchingEpisode.value = sort
+  const keyword = (props.title || '').trim()
+  if (!keyword) return
+
+  const token = ++searchToken
+  drawerVisible.value = true
+  searchRows.value = []
+  loading.value = true
+
+  try {
+    const entries = await ensureCatalogEntries()
+    if (token !== searchToken) return
+
+    searchRows.value = entries.map((e) => ({
+      key: e.key,
+      name: e.name,
+      factoryId: e.factoryId,
+      iconUrl: e.iconUrl,
+      status: 'pending' as RowStatus,
+      candidates: [],
+      searchConfig: e.searchConfig || {},
+      subscriptionName: e.subscriptionName,
+    }))
+
+    // 并发度限制
+    const concurrency = 4
+    let idx = 0
+    const runNext = async (): Promise<void> => {
+      if (token !== searchToken) return
+      const i = idx++
+      if (i >= searchRows.value.length) return
+      const row = searchRows.value[i]
+      row.status = 'searching'
+      try {
+        const hits =
+          (await searchOneSource({
+            factoryId: row.factoryId,
+            name: row.name,
+            searchConfig: row.searchConfig,
+            keyword,
+            episodeSort: sort,
+            altKeyword: props.altTitle,
+            subscriptionName: row.subscriptionName,
+          })) || []
+        if (token !== searchToken) return
+        row.candidates = hits
+        row.status = hits.length ? 'done' : 'empty'
+      } catch (e: any) {
+        if (token !== searchToken) return
+        row.status = 'error'
+        row.error = e?.message || '搜索失败'
+      }
+      await runNext()
+    }
+
+    await Promise.all(Array.from({ length: concurrency }, () => runNext()))
+  } catch {
+    /* interceptor */
+  } finally {
+    if (token === searchToken) loading.value = false
   }
+}
+
+function onDrawerClosed() {
+  searchToken++
+}
+
+async function startManual() {
+  const uri = source.value.trim()
+  if (!uri) return
   loading.value = true
   playUrl.value = null
   stopPoll()
   try {
-    const s = await createPlaybackSession({
-      uri,
-      bangumiId: props.bangumiId,
-      episodeSort: episodeSort.value,
-    })
+    const isStream =
+      /^https?:\/\//i.test(uri) &&
+      !/\.torrent(\?|$)/i.test(uri) &&
+      (/\.(mp4|m3u8|mkv|webm|m4v|flv)(\?|$)/i.test(uri) || /m3u8/i.test(uri))
+    const s = isStream
+      ? await createStreamPlaybackSession({
+          streamUrl: uri,
+          bangumiId: props.bangumiId,
+          episodeSort: episodeSort.value,
+        })
+      : await createPlaybackSession({
+          uri,
+          bangumiId: props.bangumiId,
+          episodeSort: episodeSort.value,
+        })
     beginSession(s)
-    ElNotification({ type: 'success', title: '已创建播放任务' })
   } catch {
     /* interceptor */
   } finally {
@@ -176,7 +363,10 @@ async function startManual() {
 
 defineExpose({ playEpisode })
 
-onBeforeUnmount(() => stopPoll())
+onBeforeUnmount(() => {
+  searchToken++
+  stopPoll()
+})
 </script>
 
 <style scoped lang="less">
@@ -196,7 +386,6 @@ onBeforeUnmount(() => stopPoll())
     min-width: 0;
   }
 
-  /* 与详情页「加入聊天室」.action-btn--primary 一致 */
   &__btn {
     flex-shrink: 0;
     border: none;
@@ -209,7 +398,6 @@ onBeforeUnmount(() => stopPoll())
     color: #fff;
     transition: box-shadow 0.2s, opacity 0.2s, filter 0.2s;
 
-    /* 与输入框同行：不要 translateY，避免错位 */
     &:hover:not(:disabled) {
       box-shadow: 0 0 12px rgba(104, 198, 189, 0.45);
       filter: brightness(1.05);
@@ -235,6 +423,10 @@ onBeforeUnmount(() => stopPoll())
       background: rgba(104, 198, 189, 0.15);
       color: var(--primary-color);
     }
+    .mode {
+      color: var(--primary-color);
+      font-size: 12px;
+    }
     .meta {
       color: var(--font-unactive-color);
     }
@@ -254,5 +446,133 @@ onBeforeUnmount(() => stopPoll())
 :deep(.playback-panel__input .el-input__wrapper) {
   min-height: 42px;
   border-radius: 10px;
+}
+
+.search-drawer {
+  &__body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-bottom: 24px;
+  }
+
+  &__empty {
+    padding: 24px 0;
+  }
+}
+
+.search-row {
+  display: flex;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--aside-bg-color);
+  border: 1px solid rgba(104, 198, 189, 0.12);
+
+  &--searching {
+    border-color: rgba(104, 198, 189, 0.4);
+  }
+  &--done {
+    border-color: rgba(104, 198, 189, 0.55);
+  }
+  &--error {
+    border-color: rgba(245, 108, 108, 0.4);
+  }
+
+  &__avatar {
+    flex-shrink: 0;
+    background: #1e1d2b;
+  }
+
+  &__main {
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  &__kind {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary-color);
+    border: 1px solid rgba(104, 198, 189, 0.4);
+    border-radius: 6px;
+    padding: 1px 6px;
+  }
+
+  &__name {
+    flex: 1;
+    min-width: 0;
+    font-size: 14px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__st {
+    flex-shrink: 0;
+    font-size: 12px;
+    color: var(--font-unactive-color);
+  }
+
+  &__err {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--warning-color);
+  }
+
+  &__hits {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+  }
+}
+
+.hit {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  gap: 8px;
+  align-items: center;
+  text-align: left;
+  border: 1px solid rgba(104, 198, 189, 0.25);
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: rgba(104, 198, 189, 0.06);
+  color: var(--font-color);
+  cursor: pointer;
+  font-size: 12px;
+
+  &:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    background: rgba(104, 198, 189, 0.14);
+  }
+
+  &:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+  }
+
+  &__kind {
+    font-weight: 700;
+    color: var(--primary-color);
+  }
+
+  &__title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__play {
+    color: var(--primary-color);
+    font-weight: 600;
+  }
 }
 </style>

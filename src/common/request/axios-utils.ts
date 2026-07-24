@@ -126,6 +126,10 @@ export default class AxiosUtils {
     return this.instance.request({ ...config, method: 'PATCH' })
   }
 
+  put<T = any>(config: AxiosRequestConfig): Promise<T> {
+    return this.instance.request({ ...config, method: 'PUT' })
+  }
+
   delete<T = any>(config: AxiosRequestConfig): Promise<T> {
     return this.instance.request({ ...config, method: 'DELETE' })
   }
