@@ -129,9 +129,14 @@ function getPlayer(): Artplayer | null {
   return player
 }
 
+function clearHint() {
+  hint.value = ''
+}
+
 watch(
   () => props.url,
   (u) => {
+    hint.value = ''
     if (u) createPlayer(u)
     else destroy()
   },
@@ -143,7 +148,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => destroy())
 
-defineExpose({ seekTo, setPaused, getPlayer })
+defineExpose({ seekTo, setPaused, getPlayer, clearHint })
 </script>
 
 <style scoped lang="less">

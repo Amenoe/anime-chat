@@ -342,8 +342,7 @@ function openSearchDrawer() {
 async function selectCandidate(c: PlayCandidate) {
   if (sourceCreating.value) return
   sourceCreating.value = true
-  searchToken++
-  sourceSearching.value = false
+  // 不中断搜索：不改 searchToken，不清 sourceSearching
   try {
     const groupId = roomStore.group?.group_id
     const epSort = searchingEpisode.value || undefined
@@ -368,6 +367,9 @@ async function selectCandidate(c: PlayCandidate) {
       })
       sessionId = s.id
     }
+
+    // 清除播放器错误提示
+    playerRef.value?.clearHint()
 
     roomStore.sendControl('set_source', {
       session_id: sessionId,
