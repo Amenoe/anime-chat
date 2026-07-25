@@ -238,7 +238,8 @@ async function enterOrCreateRoom(sort?: number) {
   if (roomLoading.value) return
   roomLoading.value = true
   try {
-    const rooms = await listRooms({ anime_id })
+    const allRooms = await listRooms({ anime_id })
+    const rooms = allRooms.filter((r: any) => r.season_id)
 
     if (rooms.length > 0) {
       const room = rooms[0]
