@@ -119,9 +119,18 @@ export function searchOneSource(data: {
   })
 }
 
-export function buildPlaybackStreamUrl(sessionId: string) {
+/**
+ * 播放器拉流 URL。
+ * - token：video/hls 无法自定义 Authorization
+ * - type=m3u8：仅流媒体/HLS 会话需要（代理 path 不含 .m3u8，靠 query 触发 hls.js）
+ *   BT progressive 不要带 type=m3u8
+ */
+export function buildPlaybackStreamUrl(sessionId: string, opts?: { hls?: boolean }) {
   const token = localCache.getCache('token') || ''
   const base = import.meta.env.VITE_BASE_API || '/api'
-  const q = token ? `?token=${encodeURIComponent(token)}` : ''
-  return `${base}/playback/sessions/${sessionId}/stream${q}`
+  const params = new URLSearchParams()
+  if (token) params.set('token', token)
+  if (opts?.hls) params.set('type', 'm3u8')
+  const q = params.toString()
+  return `${base}/playback/sessions/${sessionId}/stream${q ? `?${q}` : ''}`
 }

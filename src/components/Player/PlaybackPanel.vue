@@ -199,7 +199,9 @@ function stopPoll() {
 
 function maybeSetPlayUrl(s: PlaybackSessionView) {
   if (s.status === 'playable' || s.status === 'ready') {
-    playUrl.value = buildPlaybackStreamUrl(s.id)
+    playUrl.value = buildPlaybackStreamUrl(s.id, {
+      hls: s.playMode === 'hls',
+    })
   }
 }
 

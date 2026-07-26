@@ -45,6 +45,7 @@ function createPlayer(url: string) {
   destroy()
   hint.value = ''
 
+  // 代理 stream 路径无 .m3u8：必须靠 type=m3u8 query（BT progressive 不带此参数）
   const isHls = /\.m3u8(\?|$)/i.test(url) || /[?&]type=m3u8\b/i.test(url)
   const readonly = !!props.controlled
 

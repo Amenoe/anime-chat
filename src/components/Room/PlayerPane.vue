@@ -149,6 +149,7 @@ const streamUrl = computed(() => {
   const ps = playbackState.value
   if (!ps) return null
   if (ps.stream_url) return ps.stream_url
+  // 无 stream_url 时兜底；是否 HLS 未知，默认不带 type（避免 BT 误判）
   if (ps.session_id) return buildPlaybackStreamUrl(ps.session_id)
   return null
 })
@@ -398,6 +399,7 @@ async function selectCandidate(c: PlayCandidate) {
     const epSort = searchingEpisode.value || undefined
     let sessionId: string
 
+    let playMode: 'progressive' | 'stream' | 'hls' = 'progressive'
     if (c.kind === 'stream') {
       const s = await createStreamPlaybackSession({
         streamUrl: c.uri,
@@ -408,6 +410,7 @@ async function selectCandidate(c: PlayCandidate) {
         groupId,
       })
       sessionId = s.id
+      playMode = s.playMode || 'stream'
     } else {
       const s = await createPlaybackSession({
         uri: c.uri,
@@ -416,6 +419,7 @@ async function selectCandidate(c: PlayCandidate) {
         groupId,
       })
       sessionId = s.id
+      playMode = s.playMode || 'progressive'
     }
 
     // 清除播放器错误提示
@@ -423,7 +427,8 @@ async function selectCandidate(c: PlayCandidate) {
 
     roomStore.sendControl('set_source', {
       session_id: sessionId,
-      stream_url: buildPlaybackStreamUrl(sessionId),
+      // 仅 HLS 带 type=m3u8；mp4 直链 / BT 不带
+      stream_url: buildPlaybackStreamUrl(sessionId, { hls: playMode === 'hls' }),
       episode_sort: searchingEpisode.value,
       title: c.title || playbackTitle.value,
     })
