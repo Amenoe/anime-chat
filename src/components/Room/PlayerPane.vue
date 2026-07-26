@@ -60,7 +60,9 @@
       @closed="onDrawerClosed"
     >
       <div class="search-drawer__body">
-        <div v-if="sourceSearching" class="search-drawer__hint">搜索中，选中后停止搜索</div>
+        <div v-if="sourceSearching" class="search-drawer__hint">
+          搜索中，有结果可直接选定（后台继续搜）
+        </div>
         <div v-if="!searchRows.length && !sourceSearching" class="search-drawer__empty">
           <el-empty description="暂无可用站点" />
         </div>
@@ -230,6 +232,12 @@ const sourceCreating = ref(false)
 const searchRows = ref<SearchRow[]>([])
 const searchingEpisode = ref(0)
 let searchToken = 0
+/** 会话内搜源缓存：同 keyword+集数 不重复请求 */
+const searchCache = new Map<string, { rows: SearchRow[]; searching: boolean; token: number }>()
+
+function cacheKey(keyword: string, sort: number) {
+  return `${keyword}::${sort}`
+}
 
 const drawerTitle = computed(() => {
   const ep = searchingEpisode.value
@@ -276,11 +284,23 @@ function openSearchDrawer() {
     return
   }
 
-  const token = ++searchToken
   sourceDrawerVisible.value = true
+  sourceCreating.value = false
+
+  const key = cacheKey(keyword, sort)
+  const cached = searchCache.get(key)
+  // 会话内缓存：同关键词+集数已有结果或正在搜 → 直接展示，不重搜
+  if (cached && (cached.rows.length > 0 || cached.searching)) {
+    searchRows.value = cached.rows
+    sourceSearching.value = cached.searching
+    searchToken = cached.token
+    return
+  }
+
+  const token = ++searchToken
   searchRows.value = []
   sourceSearching.value = true
-  sourceCreating.value = false
+  searchCache.set(key, { rows: searchRows.value, searching: true, token })
 
   void (async () => {
     try {
@@ -297,6 +317,11 @@ function openSearchDrawer() {
         searchConfig: e.searchConfig || {},
         subscriptionName: e.subscriptionName,
       }))
+      searchCache.set(key, {
+        rows: searchRows.value,
+        searching: true,
+        token,
+      })
 
       const concurrency = 4
       let idx = 0
@@ -323,18 +348,43 @@ function openSearchDrawer() {
             status: hits.length ? 'done' : 'empty',
             error: undefined,
           })
+          // 同步缓存引用（patchRow 已替换数组项）
+          searchCache.set(key, {
+            rows: searchRows.value,
+            searching: true,
+            token,
+          })
         } catch (e: any) {
           if (token !== searchToken) return
           patchRow(i, { status: 'error', error: e?.message || '搜索失败' })
+          searchCache.set(key, {
+            rows: searchRows.value,
+            searching: true,
+            token,
+          })
         }
         await runNext()
       }
 
       void Promise.all(Array.from({ length: concurrency }, () => runNext())).finally(() => {
-        if (token === searchToken) sourceSearching.value = false
+        if (token === searchToken) {
+          sourceSearching.value = false
+          searchCache.set(key, {
+            rows: searchRows.value,
+            searching: false,
+            token,
+          })
+        }
       })
     } catch {
-      if (token === searchToken) sourceSearching.value = false
+      if (token === searchToken) {
+        sourceSearching.value = false
+        searchCache.set(key, {
+          rows: searchRows.value,
+          searching: false,
+          token,
+        })
+      }
     }
   })()
 }
@@ -387,13 +437,14 @@ async function selectCandidate(c: PlayCandidate) {
 }
 
 function onDrawerClosed() {
-  searchToken++
-  sourceSearching.value = false
+  // 关闭抽屉不取消后台搜索、不丢缓存，便于再次打开继续看结果
 }
 
 onBeforeUnmount(() => {
+  // 离开放映室页才中断搜索并清会话缓存
   searchToken++
   sourceSearching.value = false
+  searchCache.clear()
 })
 </script>
 
