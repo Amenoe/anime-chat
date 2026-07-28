@@ -9,11 +9,12 @@
       @play="onPlay"
       @pause="onPause"
       @seek="onSeek"
+      @error="onPlayerError"
     />
 
     <div class="player-pane__info">
       <div class="player-pane__meta">
-        <span v-if="playbackTitle" class="player-pane__title">{{ playbackTitle }}</span>
+        <span v-if="animeTitle" class="player-pane__title">{{ animeTitle }}</span>
         <span v-if="currentEpisodeSort" class="player-pane__ep"
           >第 {{ currentEpisodeSort }} 话</span
         >
@@ -23,29 +24,22 @@
           选源开播
         </button>
         <div class="player-pane__host">
-          <span class="player-pane__host-label">房主</span>
-          <span class="player-pane__host-badge">{{ isHost ? '你' : '观众模式' }}</span>
+          <span class="player-pane__host-label">身份</span>
+          <span class="player-pane__host-badge">{{ isHost ? '房主' : '观众' }}</span>
         </div>
       </div>
     </div>
 
-    <div v-if="episodeList.length" class="player-pane__episodes">
-      <span class="player-pane__episodes-label">选集</span>
-      <div class="player-pane__episode-bar">
-        <button
-          v-for="ep in episodeList"
-          :key="ep.id"
-          class="player-pane__episode-btn"
-          :class="{
-            active: ep.sort === currentEpisodeSort,
-            clickable: isHost,
-          }"
-          :disabled="!isHost"
-          :title="ep.name_cn || ep.name || `第 ${ep.sort} 话`"
-          @click="switchEpisode(ep)"
-        >
-          {{ ep.sort }}
-        </button>
+    <!-- 右侧已有播放列表：左侧不再重复选集，改为本集信息 + 清晰度 + 选源状态 -->
+    <div class="player-pane__status">
+      <div class="player-pane__ep-line">
+        <span class="player-pane__ep-name" :title="currentEpisodeName">
+          {{ currentEpisodeName || '未选择集数' }}
+        </span>
+        <span v-if="currentQuality" class="player-pane__quality">{{ currentQuality }}</span>
+      </div>
+      <div v-if="sourceStatusText" class="player-pane__status-line">
+        <span class="player-pane__status-text">{{ sourceStatusText }}</span>
       </div>
     </div>
 
@@ -96,6 +90,7 @@
                   c.kind === 'bt' ? 'BT' : c.resolved ? '直链' : '线路'
                 }}</span>
                 <span class="hit__title">{{ c.title || c.channel || c.uri }}</span>
+                <span v-if="qualityOf(c)" class="hit__quality">{{ qualityOf(c) }}</span>
                 <span class="hit__play">{{ sourceCreating ? '…' : '选定' }}</span>
               </button>
             </div>
@@ -125,7 +120,6 @@ import {
   saveCatalogCache,
 } from '@/utils/media-catalog-cache'
 import AnimePlayer from '@/components/Player/AnimePlayer.vue'
-import type { IBangumiEpisode } from '@/api/types'
 
 const roomStore = useRoomStore()
 const homeStore = useHomeStore()
@@ -136,28 +130,59 @@ const currentEpisodeSort = computed(() => playbackState.value?.episode_sort ?? n
 const episodeList = computed(() => homeStore.episodes)
 const bangumiId = computed(() => homeStore.animeDetail?.id ?? 0)
 
+const animeTitle = computed(() => {
+  return homeStore.animeDetail?.name_cn || homeStore.animeDetail?.name || ''
+})
+
 const playbackTitle = computed(() => {
-  return (
-    playbackState.value?.title ||
-    homeStore.animeDetail?.name_cn ||
-    homeStore.animeDetail?.name ||
-    ''
-  )
+  return playbackState.value?.title || animeTitle.value || ''
+})
+
+const currentEpisodeName = computed(() => {
+  const sort = currentEpisodeSort.value
+  if (sort == null) return ''
+  const ep = episodeList.value.find((e) => e.sort === sort)
+  const name = ep?.name_cn || ep?.name
+  return name ? `第 ${sort} 话 · ${name}` : `第 ${sort} 话`
+})
+
+/** 从线路/标题文本中解析清晰度标记（源站不提供独立字段） */
+function extractQuality(...texts: (string | undefined)[]): string {
+  const text = texts.filter(Boolean).join(' ')
+  if (!text) return ''
+  const m = /(蓝光|4K|2160P?|1080P?|超清|720P?|高清|480P?|标清|原盘|杜比|HDR)/i.exec(text)
+  if (!m) return ''
+  const raw = m[1].toUpperCase()
+  // 数字分辨率统一补 P
+  if (/^\d+$/.test(raw)) return `${raw}P`
+  if (/^\d+P$/.test(raw)) return raw
+  return m[1]
+}
+
+function qualityOf(c: PlayCandidate): string {
+  return extractQuality(c.channel, c.title, c.uri)
+}
+
+/** 当前播放源清晰度：优先自动/手动选定时记录的 label，回落 playback title */
+const currentQuality = computed(() => {
+  return extractQuality(currentSourceLabel.value, playbackState.value?.title || '')
 })
 
 const streamUrl = computed(() => {
   const ps = playbackState.value
   if (!ps) return null
   if (ps.stream_url) return ps.stream_url
-  // 无 stream_url 时兜底；是否 HLS 未知，默认不带 type（避免 BT 误判）
   if (ps.session_id) return buildPlaybackStreamUrl(ps.session_id)
   return null
 })
 
-// --- AnimePlayer ref ---
+const hasActiveSource = computed(() => {
+  const ps = playbackState.value
+  return !!(ps?.stream_url || ps?.session_id)
+})
+
 const playerRef = ref<InstanceType<typeof AnimePlayer> | null>(null)
 
-// --- Host heartbeat ---
 let lastHeartbeat = 0
 const HEARTBEAT_INTERVAL = 8000
 
@@ -170,8 +195,14 @@ function onTimeUpdate(currentTime: number) {
 }
 
 function onPlay(currentTime: number) {
-  if (!isHost.value) return
-  roomStore.sendControl('play', { position: currentTime })
+  if (isHost.value) {
+    roomStore.sendControl('play', { position: currentTime })
+  }
+  // 真正开始播：停止自动换源
+  if (autoMode.value && autoPlayingUri.value) {
+    stopAutoMode()
+    autoStatus.value = ''
+  }
 }
 
 function onPause(currentTime: number) {
@@ -184,35 +215,24 @@ function onSeek(currentTime: number) {
   roomStore.sendControl('seek', { position: currentTime })
 }
 
-// --- Viewer sync ---
 watch(playbackState, (ps) => {
   if (!ps || isHost.value) return
   const p = playerRef.value
   if (!p) return
+  const art = p.getPlayer()
+  if (!art) return
 
-  p.setPaused(ps.paused)
+  // 播放中：补偿自 server_time 起的流逝；暂停：对齐到暂停点
+  const target =
+    !ps.paused && ps.server_time ? ps.position + (Date.now() - ps.server_time) / 1000 : ps.position
 
-  if (!ps.paused && ps.server_time) {
-    const target = ps.position + (Date.now() - ps.server_time) / 1000
-    const art = p.getPlayer()
-    if (art && Math.abs(art.currentTime - target) > 1.5) {
-      p.seekTo(target)
-    }
-  } else if (ps.paused) {
-    p.seekTo(ps.position)
+  // 先对齐进度，再应用播放/暂停状态，避免 play() 被随后的 seek 打断
+  if (Math.abs(art.currentTime - target) > 1.5) {
+    p.seekTo(target)
   }
+  p.setPaused(ps.paused)
 })
 
-// --- Episode switching ---
-function switchEpisode(ep: IBangumiEpisode) {
-  if (!isHost.value) return
-  roomStore.sendControl('switch_episode', {
-    episode_sort: ep.sort,
-    episode_id: ep.id,
-  })
-}
-
-// --- Host search source ---
 type RowStatus = 'pending' | 'searching' | 'done' | 'empty' | 'error'
 
 type SearchRow = {
@@ -233,18 +253,42 @@ const sourceCreating = ref(false)
 const searchRows = ref<SearchRow[]>([])
 const searchingEpisode = ref(0)
 let searchToken = 0
-/** 会话内搜源缓存：同 keyword+集数 不重复请求 */
 const searchCache = new Map<string, { rows: SearchRow[]; searching: boolean; token: number }>()
+
+/** 自动选源：按站点/线路顺序试播，失败换下一个 */
+const autoMode = ref(false)
+const autoQueue = ref<PlayCandidate[]>([])
+const autoTried = new Set<string>()
+const autoPlayingUri = ref('')
+const autoStatus = ref('')
+const currentSourceLabel = ref('')
+let autoPlayGen = 0
+let playWatchTimer: ReturnType<typeof setTimeout> | null = null
+let autoBootstrapped = false
 
 function cacheKey(keyword: string, sort: number) {
   return `${keyword}::${sort}`
 }
 
+function candidateKey(c: PlayCandidate) {
+  return `${c.kind}::${c.uri}`
+}
+
 const drawerTitle = computed(() => {
   const ep = searchingEpisode.value
-  const name = playbackTitle.value
+  const name = animeTitle.value || playbackTitle.value
   const base = ep ? `${name} · 第 ${ep} 话` : '搜源'
   return sourceSearching.value ? `${base}（搜索中）` : base
+})
+
+const sourceStatusText = computed(() => {
+  if (autoStatus.value) return autoStatus.value
+  if (currentSourceLabel.value) return `当前源 · ${currentSourceLabel.value}`
+  if (hasActiveSource.value && playbackState.value?.title) {
+    return `播放中 · ${playbackState.value.title}`
+  }
+  if (sourceSearching.value) return '正在搜索可用线路…'
+  return ''
 })
 
 function statusText(st: RowStatus) {
@@ -276,25 +320,122 @@ async function ensureCatalogEntries(): Promise<MediaCatalogEntry[]> {
   return merged.filter((e) => isCatalogEnabled(e.key, prefs))
 }
 
-function openSearchDrawer() {
-  const sort = currentEpisodeSort.value || 1
-  searchingEpisode.value = sort
-  const keyword = (homeStore.animeDetail?.name_cn || homeStore.animeDetail?.name || '').trim()
-  if (!keyword) {
-    ElNotification({ type: 'warning', title: '番剧名称未知，无法搜源' })
+function enqueueCandidates(hits: PlayCandidate[], siteName: string) {
+  const ordered = [
+    ...hits.filter((h) => h.kind === 'stream'),
+    ...hits.filter((h) => h.kind !== 'stream'),
+  ]
+  for (const c of ordered) {
+    const key = candidateKey(c)
+    if (autoTried.has(key)) continue
+    if (autoQueue.value.some((q) => candidateKey(q) === key)) continue
+    autoQueue.value.push({
+      ...c,
+      title: c.title || c.channel || siteName,
+      sourceName: c.sourceName || siteName,
+    })
+  }
+  if (autoMode.value) void drainAutoQueue()
+}
+
+function clearPlayWatch() {
+  if (playWatchTimer) {
+    clearTimeout(playWatchTimer)
+    playWatchTimer = null
+  }
+}
+
+function stopAutoMode(reason?: string) {
+  autoMode.value = false
+  clearPlayWatch()
+  if (reason) autoStatus.value = reason
+}
+
+async function drainAutoQueue() {
+  if (!autoMode.value || !isHost.value) return
+  if (sourceCreating.value) return
+  if (autoPlayingUri.value) return
+
+  while (autoQueue.value.length) {
+    const next = autoQueue.value.shift()!
+    const key = candidateKey(next)
+    if (autoTried.has(key)) continue
+    autoTried.add(key)
+    await tryAutoCandidate(next)
     return
   }
 
-  sourceDrawerVisible.value = true
-  sourceCreating.value = false
+  if (!sourceSearching.value && !hasActiveSource.value) {
+    stopAutoMode('未找到可播放线路，可手动「选源开播」')
+  }
+}
+
+async function tryAutoCandidate(c: PlayCandidate) {
+  if (!autoMode.value || !isHost.value) return
+  const gen = ++autoPlayGen
+  const label = c.title || c.channel || c.sourceName || '线路'
+  autoStatus.value = `正在尝试 · ${label}`
+  autoPlayingUri.value = c.uri
+  currentSourceLabel.value = label
+
+  const ok = await selectCandidate(c, { fromAuto: true })
+  if (gen !== autoPlayGen) return
+
+  if (!ok) {
+    autoPlayingUri.value = ''
+    autoStatus.value = `失败 · ${label}，尝试下一路…`
+    void drainAutoQueue()
+    return
+  }
+
+  clearPlayWatch()
+  playWatchTimer = setTimeout(() => {
+    if (!autoMode.value) return
+    if (gen !== autoPlayGen) return
+    if (autoPlayingUri.value === c.uri) {
+      autoStatus.value = `超时 · ${label}，尝试下一路…`
+      autoPlayingUri.value = ''
+      void drainAutoQueue()
+    }
+  }, 18000)
+}
+
+function onPlayerError() {
+  if (!autoMode.value || !isHost.value) return
+  if (!autoPlayingUri.value) return
+  const label = currentSourceLabel.value || '当前源'
+  autoStatus.value = `播放失败 · ${label}，尝试下一路…`
+  autoPlayingUri.value = ''
+  clearPlayWatch()
+  void drainAutoQueue()
+}
+
+function startSearch(sort: number, opts?: { openDrawer?: boolean }) {
+  searchingEpisode.value = sort
+  const keyword = (homeStore.animeDetail?.name_cn || homeStore.animeDetail?.name || '').trim()
+  if (!keyword) {
+    if (opts?.openDrawer) {
+      ElNotification({ type: 'warning', title: '番剧名称未知，无法搜源' })
+    }
+    return
+  }
+
+  if (opts?.openDrawer) {
+    sourceDrawerVisible.value = true
+    sourceCreating.value = false
+  }
 
   const key = cacheKey(keyword, sort)
   const cached = searchCache.get(key)
-  // 会话内缓存：同关键词+集数已有结果或正在搜 → 直接展示，不重搜
   if (cached && (cached.rows.length > 0 || cached.searching)) {
     searchRows.value = cached.rows
     sourceSearching.value = cached.searching
     searchToken = cached.token
+    if (autoMode.value) {
+      for (const row of cached.rows) {
+        if (row.candidates?.length) enqueueCandidates(row.candidates, row.name)
+      }
+    }
     return
   }
 
@@ -349,12 +490,14 @@ function openSearchDrawer() {
             status: hits.length ? 'done' : 'empty',
             error: undefined,
           })
-          // 同步缓存引用（patchRow 已替换数组项）
           searchCache.set(key, {
             rows: searchRows.value,
             searching: true,
             token,
           })
+          if (hits.length && autoMode.value) {
+            enqueueCandidates(hits, row.name)
+          }
         } catch (e: any) {
           if (token !== searchToken) return
           patchRow(i, { status: 'error', error: e?.message || '搜索失败' })
@@ -375,6 +518,7 @@ function openSearchDrawer() {
             searching: false,
             token,
           })
+          if (autoMode.value) void drainAutoQueue()
         }
       })
     } catch {
@@ -385,18 +529,42 @@ function openSearchDrawer() {
           searching: false,
           token,
         })
+        if (autoMode.value) void drainAutoQueue()
       }
     }
   })()
 }
 
-async function selectCandidate(c: PlayCandidate) {
-  if (sourceCreating.value) return
+function openSearchDrawer() {
+  stopAutoMode()
+  autoPlayingUri.value = ''
+  const sort = currentEpisodeSort.value || 1
+  startSearch(sort, { openDrawer: true })
+}
+
+function beginAutoSelect() {
+  if (!isHost.value) return
+  if (hasActiveSource.value) return
+  const sort = currentEpisodeSort.value || 1
+  autoMode.value = true
+  autoQueue.value = []
+  autoTried.clear()
+  autoPlayingUri.value = ''
+  autoStatus.value = '自动选源中…'
+  startSearch(sort, { openDrawer: false })
+}
+
+async function selectCandidate(c: PlayCandidate, opts?: { fromAuto?: boolean }): Promise<boolean> {
+  if (sourceCreating.value) return false
   sourceCreating.value = true
-  // 不中断搜索：不改 searchToken，不清 sourceSearching
+  if (!opts?.fromAuto) {
+    stopAutoMode()
+    autoPlayingUri.value = ''
+    currentSourceLabel.value = c.title || c.channel || c.sourceName || ''
+  }
   try {
     const groupId = roomStore.group?.group_id
-    const epSort = searchingEpisode.value || undefined
+    const epSort = searchingEpisode.value || currentEpisodeSort.value || undefined
     let sessionId: string
 
     let playMode: 'progressive' | 'stream' | 'hls' = 'progressive'
@@ -422,40 +590,63 @@ async function selectCandidate(c: PlayCandidate) {
       playMode = s.playMode || 'progressive'
     }
 
-    // 清除播放器错误提示
     playerRef.value?.clearHint()
 
     roomStore.sendControl('set_source', {
       session_id: sessionId,
-      // 仅 HLS 带 type=m3u8；mp4 直链 / BT 不带
       stream_url: buildPlaybackStreamUrl(sessionId, { hls: playMode === 'hls' }),
-      episode_sort: searchingEpisode.value,
+      episode_sort: epSort,
       title: c.title || playbackTitle.value,
     })
 
-    sourceDrawerVisible.value = false
+    if (!opts?.fromAuto) {
+      sourceDrawerVisible.value = false
+      autoStatus.value = ''
+    }
+    return true
   } catch {
-    /* interceptor */
+    return false
   } finally {
     sourceCreating.value = false
   }
 }
 
 function onDrawerClosed() {
-  // 关闭抽屉不取消后台搜索、不丢缓存，便于再次打开继续看结果
+  // 关闭抽屉不取消后台搜索、不丢缓存
 }
 
+// 房主进房且尚无片源 → 自动选源
+watch(
+  [isHost, () => homeStore.animeDetail?.id, hasActiveSource],
+  ([host, animeId, hasSrc]) => {
+    if (!host || !animeId || hasSrc || autoBootstrapped) return
+    autoBootstrapped = true
+    nextTick(() => beginAutoSelect())
+  },
+  { immediate: true },
+)
+
+// 房主切集后若无源，自动再选
+watch(
+  () => playbackState.value?.episode_sort,
+  (sort, prev) => {
+    if (!isHost.value) return
+    if (sort == null || sort === prev) return
+    if (hasActiveSource.value) return
+    beginAutoSelect()
+  },
+)
+
 onBeforeUnmount(() => {
-  // 离开放映室页才中断搜索并清会话缓存
   searchToken++
   sourceSearching.value = false
   searchCache.clear()
+  stopAutoMode()
+  autoPlayGen++
 })
 </script>
 
 <style scoped lang="less">
-@accent: var(--primary-color);
-
 .player-pane {
   display: flex;
   flex-direction: column;
@@ -539,57 +730,55 @@ onBeforeUnmount(() => {
     font-weight: 600;
   }
 
-  &__episodes {
+  &__status {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
+    padding: 12px 14px;
+    border-radius: 10px;
+    background: var(--aside-bg-color);
+    border: 1px solid rgba(104, 198, 189, 0.12);
   }
 
-  &__episodes-label {
+  &__ep-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  &__ep-name {
+    flex: 1;
+    min-width: 0;
     font-size: 14px;
     font-weight: 600;
-    padding-left: 10px;
-    border-left: 3px solid var(--primary-color);
+    color: var(--font-color);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  &__episode-bar {
+  &__quality {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary-color);
+    padding: 1px 8px;
+    border-radius: 6px;
+    background: rgba(104, 198, 189, 0.12);
+    border: 1px solid rgba(104, 198, 189, 0.35);
+  }
+
+  &__status-line {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px;
+    align-items: center;
+    gap: 8px 14px;
+    font-size: 12px;
   }
 
-  &__episode-btn {
-    min-width: 40px;
-    height: 36px;
-    padding: 0 10px;
-    border-radius: 8px;
-    border: 1px solid rgba(104, 198, 189, 0.2);
-    background: var(--aside-bg-color);
-    color: var(--font-color);
-    font-size: 13px;
-    font-weight: 600;
-    cursor: default;
-    transition: all 0.2s;
-
-    &.clickable {
-      cursor: pointer;
-
-      &:hover:not(.active) {
-        border-color: rgba(104, 198, 189, 0.5);
-        background: rgba(104, 198, 189, 0.08);
-      }
-    }
-
-    &.active {
-      background: var(--primary-color);
-      border-color: var(--primary-color);
-      color: #fff;
-      box-shadow: 0 0 10px rgba(104, 198, 189, 0.3);
-    }
-
-    &:disabled:not(.active) {
-      opacity: 0.7;
-    }
+  &__status-text {
+    color: var(--primary-color);
   }
 }
 
@@ -688,7 +877,7 @@ onBeforeUnmount(() => {
 
 .hit {
   display: grid;
-  grid-template-columns: 28px 1fr auto;
+  grid-template-columns: 28px 1fr auto auto;
   gap: 8px;
   align-items: center;
   text-align: left;
@@ -719,6 +908,16 @@ onBeforeUnmount(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  &__quality {
+    flex-shrink: 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--primary-color);
+    padding: 0 6px;
+    border-radius: 5px;
+    background: rgba(104, 198, 189, 0.14);
   }
 
   &__play {

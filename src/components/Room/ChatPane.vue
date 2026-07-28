@@ -1,27 +1,46 @@
 <template>
   <div class="chat-pane">
     <div class="chat-pane__header">
-      <span class="chat-pane__online"> 在线 {{ onlineCount }} </span>
+      <div class="chat-pane__online-block">
+        <span class="chat-pane__online">在线 {{ onlineCount }}</span>
+        <div v-if="onlineUsers.length" class="chat-pane__avatars">
+          <el-tooltip
+            v-for="u in onlineUsers"
+            :key="u.user_id"
+            :content="u.nickname || '用户'"
+            placement="bottom"
+            effect="dark"
+          >
+            <el-avatar class="chat-pane__avatar" :size="28" :src="avatarOf(u.avatar)">
+              {{ (u.nickname || '?').slice(0, 1) }}
+            </el-avatar>
+          </el-tooltip>
+        </div>
+      </div>
       <el-button size="small" text @click="copyRoomLink">复制链接</el-button>
     </div>
 
     <div ref="listRef" class="chat-pane__list">
       <div v-if="messages.length === 0" class="chat-pane__empty">还没有消息，来说点什么吧</div>
-      <div
-        v-for="item in messages"
-        :key="item.id"
-        class="chat-row"
-        :class="{ 'is-self': isSelf(item.user_id), 'is-pending': item.pending }"
-      >
-        <el-avatar class="chat-avatar" :size="32" :src="avatarOf(item.avatar)" />
-        <div class="chat-bubble">
-          <div class="chat-bubble__meta">
-            <span class="chat-bubble__name">{{ item.nickname }}</span>
-            <span class="chat-bubble__time">{{ formatStamp(Number(item.time)) }}</span>
-          </div>
-          <div class="chat-bubble__text">{{ item.message }}</div>
+      <template v-for="item in messages" :key="item.id">
+        <div v-if="item.message_type === 'system'" class="chat-system">
+          {{ item.message }}
         </div>
-      </div>
+        <div
+          v-else
+          class="chat-row"
+          :class="{ 'is-self': isSelf(item.user_id), 'is-pending': item.pending }"
+        >
+          <el-avatar class="chat-avatar" :size="32" :src="avatarOf(item.avatar)" />
+          <div class="chat-bubble">
+            <div class="chat-bubble__meta">
+              <span class="chat-bubble__name">{{ item.nickname }}</span>
+              <span class="chat-bubble__time">{{ formatStamp(Number(item.time)) }}</span>
+            </div>
+            <div class="chat-bubble__text">{{ item.message }}</div>
+          </div>
+        </div>
+      </template>
     </div>
 
     <div class="chat-pane__input">
@@ -58,7 +77,8 @@ const listRef = ref<HTMLElement | null>(null)
 
 const messages = computed(() => roomStore.messages)
 const connected = computed(() => roomStore.connected)
-const onlineCount = computed(() => roomStore.onlineUsers.length)
+const onlineUsers = computed(() => roomStore.onlineUsers)
+const onlineCount = computed(() => onlineUsers.value.length)
 const canSend = computed(() => connected.value && inputText.value.trim().length > 0)
 
 const isSelf = (userId: string) => userId === loginStore.userInfo?.user_id
@@ -132,17 +152,58 @@ function copyRoomLink() {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 8px;
     padding: 10px 16px;
     border-bottom: 1px solid rgba(104, 198, 189, 0.12);
   }
 
+  &__online-block {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+    flex: 1;
+  }
+
   &__online {
+    flex-shrink: 0;
     font-size: 12px;
     color: var(--font-unactive-color);
     padding: 2px 10px;
     border-radius: 999px;
     border: 1px solid rgba(104, 198, 189, 0.25);
     background: rgba(104, 198, 189, 0.08);
+  }
+
+  &__avatars {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    overflow-x: auto;
+    padding: 2px 0;
+
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  &__avatar {
+    flex-shrink: 0;
+    margin-left: -6px;
+    border: 2px solid var(--aside-bg-color);
+    background: var(--bg-color);
+    cursor: default;
+    transition: transform 0.15s, z-index 0s;
+
+    &:first-child {
+      margin-left: 0;
+    }
+
+    &:hover {
+      transform: translateY(-2px) scale(1.06);
+      z-index: 2;
+    }
   }
 
   &__list {
@@ -184,7 +245,7 @@ function copyRoomLink() {
   &__input {
     flex-shrink: 0;
     display: flex;
-    align-items: flex-end;
+    align-items: center;
     gap: 8px;
     padding: 10px 16px 14px;
     border-top: 1px solid rgba(104, 198, 189, 0.12);
@@ -204,7 +265,19 @@ function copyRoomLink() {
   &__send {
     height: 36px;
     padding: 0 16px;
-    margin-bottom: 20px;
+    flex-shrink: 0;
+  }
+}
+
+.chat-system {
+  margin: 8px 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--font-unactive-color);
+
+  span,
+  & {
+    display: block;
   }
 }
 

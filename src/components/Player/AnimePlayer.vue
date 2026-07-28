@@ -23,6 +23,7 @@ const emit = defineEmits<{
   play: [currentTime: number]
   pause: [currentTime: number]
   seek: [currentTime: number]
+  error: []
 }>()
 
 const elRef = ref<HTMLDivElement | null>(null)
@@ -113,6 +114,7 @@ function createPlayer(url: string) {
 
   player.on('error', () => {
     hint.value = '播放失败：请更换数据源重试'
+    emit('error')
   })
 }
 
@@ -122,8 +124,15 @@ function seekTo(time: number) {
 
 function setPaused(paused: boolean) {
   if (!player) return
-  if (paused) player.pause()
-  else player.play()
+  if (paused) {
+    player.pause()
+  } else {
+    // play() 返回 promise，seek 缓冲 / 自动播放策略下可能 reject，需兜住
+    const r = player.play?.()
+    if (r && typeof (r as Promise<void>).catch === 'function') {
+      ;(r as Promise<void>).catch(() => {})
+    }
+  }
 }
 
 function getPlayer(): Artplayer | null {

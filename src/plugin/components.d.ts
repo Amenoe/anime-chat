@@ -31,6 +31,7 @@ declare module '@vue/runtime-core' {
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     ElTabPane: typeof import('element-plus/es')['ElTabPane']
     ElTabs: typeof import('element-plus/es')['ElTabs']
+    ElTooltip: typeof import('element-plus/es')['ElTooltip']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     Icon: typeof import('./../components/Icon/Icon.vue')['default']
     LoginDialog: typeof import('./../components/Login/LoginDialog.vue')['default']

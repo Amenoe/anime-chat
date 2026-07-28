@@ -28,6 +28,35 @@ export type PlaybackAction =
   | 'set_source'
   | 'heartbeat'
 
+/** 放映室在线成员（头像条） */
+export type OnlineMember = {
+  user_id: string
+  nickname: string
+  avatar: string
+}
+
+function normalizeOnlineUsers(raw: unknown): OnlineMember[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .map((item) => {
+      if (typeof item === 'string') {
+        return { user_id: item, nickname: item, avatar: '' }
+      }
+      if (item && typeof item === 'object') {
+        const o = item as Record<string, unknown>
+        const user_id = String(o.user_id || '')
+        if (!user_id) return null
+        return {
+          user_id,
+          nickname: String(o.nickname || '用户'),
+          avatar: String(o.avatar || ''),
+        }
+      }
+      return null
+    })
+    .filter(Boolean) as OnlineMember[]
+}
+
 function socketBaseUrl() {
   const serve = import.meta.env.VITE_SERVE_URL as string | undefined
   return serve && serve.length ? serve : 'http://localhost:3000'
@@ -41,7 +70,7 @@ export const useRoomStore = defineStore('room', () => {
   const role = ref<'host' | 'viewer'>('viewer')
   const playbackState = ref<PlaybackState | null>(null)
   const messages = ref<ChatMessage[]>([])
-  const onlineUsers = ref<string[]>([])
+  const onlineUsers = ref<OnlineMember[]>([])
   const connected = ref(false)
   const joining = ref(false)
 
@@ -140,9 +169,37 @@ export const useRoomStore = defineStore('room', () => {
       }
     })
 
-    s.on('activeGroupUser', (_res: { code: number; data: number; group_id?: string }) => {
-      // 后端只广播在线人数（number），不含用户列表；onlineUsers 仅在 joinRoom 时填充
-    })
+    s.on(
+      'activeGroupUser',
+      (res: { code: number; data: number; members?: OnlineMember[]; group_id?: string }) => {
+        if (res?.code !== 200) return
+        if (res.group_id && group.value?.group_id && res.group_id !== group.value.group_id) {
+          return
+        }
+        if (Array.isArray(res.members)) {
+          onlineUsers.value = normalizeOnlineUsers(res.members)
+        }
+      },
+    )
+
+    s.on(
+      'roomNotice',
+      (res: { type: 'join' | 'leave'; user_id: string; nickname: string; time: number }) => {
+        if (!res?.type) return
+        const name = res.nickname || '用户'
+        const text = res.type === 'join' ? `${name} 进入了放映室` : `${name} 离开了放映室`
+        appendMessage({
+          id: `notice-${res.type}-${res.user_id}-${res.time || Date.now()}`,
+          group_id: group.value?.group_id || '',
+          user_id: res.user_id || '',
+          message: text,
+          message_type: 'system',
+          time: res.time || Date.now(),
+          nickname: name,
+          pending: false,
+        })
+      },
+    )
   }
 
   function appendMessage(msg: ChatMessage) {
@@ -198,7 +255,7 @@ export const useRoomStore = defineStore('room', () => {
         role: 'host' | 'viewer'
         playback_state: PlaybackState
         recent_messages: ChatMessage[]
-        online_users: string[]
+        online_users: OnlineMember[] | string[]
       }>((resolve, reject) => {
         joinResolver = resolve
         joinRejecter = reject
@@ -217,7 +274,7 @@ export const useRoomStore = defineStore('room', () => {
       role.value = data.role
       playbackState.value = data.playback_state
       messages.value = data.recent_messages || []
-      onlineUsers.value = data.online_users || []
+      onlineUsers.value = normalizeOnlineUsers(data.online_users)
       return data
     } finally {
       joining.value = false
@@ -240,7 +297,7 @@ export const useRoomStore = defineStore('room', () => {
         role: 'host' | 'viewer'
         playback_state: PlaybackState
         recent_messages: ChatMessage[]
-        online_users: string[]
+        online_users: OnlineMember[] | string[]
       }>((resolve, reject) => {
         joinResolver = resolve
         joinRejecter = reject
@@ -259,7 +316,7 @@ export const useRoomStore = defineStore('room', () => {
       role.value = data.role
       playbackState.value = data.playback_state
       messages.value = data.recent_messages || []
-      onlineUsers.value = data.online_users || []
+      onlineUsers.value = normalizeOnlineUsers(data.online_users)
       return data
     } finally {
       joining.value = false
