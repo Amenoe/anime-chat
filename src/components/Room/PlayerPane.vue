@@ -5,6 +5,7 @@
       :url="streamUrl"
       :title="playbackTitle"
       :controlled="!isHost"
+      :paused="playbackState?.paused"
       @timeupdate="onTimeUpdate"
       @play="onPlay"
       @pause="onPause"
@@ -923,6 +924,48 @@ onBeforeUnmount(() => {
   &__play {
     color: var(--primary-color);
     font-weight: 600;
+  }
+}
+
+@media (max-width: 768px) {
+  .player-pane {
+    gap: 0;
+
+    &__info {
+      padding: 6px 10px;
+      gap: 8px;
+    }
+
+    &__title {
+      font-size: 14px;
+    }
+
+    &__ep {
+      font-size: 11px;
+      padding: 1px 6px;
+    }
+
+    &__source-btn {
+      font-size: 12px;
+      padding: 4px 12px;
+    }
+
+    &__status {
+      padding: 8px 10px;
+      border-radius: 0;
+      border-left: none;
+      border-right: none;
+    }
+
+    &__ep-name {
+      font-size: 13px;
+    }
+  }
+
+  .search-drawer {
+    :deep(.el-drawer) {
+      width: 100% !important;
+    }
   }
 }
 </style>

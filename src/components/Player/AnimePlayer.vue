@@ -16,6 +16,8 @@ const props = defineProps<{
   title?: string
   /** 观众模式：禁用播放器交互控件 */
   controlled?: boolean
+  /** 当前房间同步的播放状态，用于播放器首次就绪时决定是否播放 */
+  paused?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -29,6 +31,8 @@ const emit = defineEmits<{
 const elRef = ref<HTMLDivElement | null>(null)
 const hint = ref('')
 let player: Artplayer | null = null
+/** 用户手动暂停标记：暂停后缓冲触发的 play 事件应忽略 */
+let userPaused = false
 
 function destroy() {
   if (player) {
@@ -45,6 +49,7 @@ function createPlayer(url: string) {
   if (!elRef.value) return
   destroy()
   hint.value = ''
+  userPaused = false
 
   // 代理 stream 路径无 .m3u8：必须靠 type=m3u8 query（BT progressive 不带此参数）
   const isHls = /\.m3u8(\?|$)/i.test(url) || /[?&]type=m3u8\b/i.test(url)
@@ -54,7 +59,7 @@ function createPlayer(url: string) {
     container: elRef.value,
     url,
     volume: 0.7,
-    autoplay: true,
+    autoplay: false,
     pip: !readonly,
     fullscreen: true,
     fullscreenWeb: true,
@@ -99,13 +104,26 @@ function createPlayer(url: string) {
 
   player = new Artplayer(options)
 
+  // 手动触发首次播放（autoplay:false 避免暂停后缓冲自动续播）
+  player.on('ready', () => {
+    if (player && !props.controlled && !props.paused) {
+      player.play?.()
+    }
+  })
+
   player.on('video:timeupdate', () => {
     if (player) emit('timeupdate', player.currentTime)
   })
   player.on('play', () => {
+    // 缓冲区就绪后浏览器可能自动触发 play，若用户手动暂停过则忽略
+    if (userPaused && player) {
+      player.pause()
+      return
+    }
     if (player) emit('play', player.currentTime)
   })
   player.on('pause', () => {
+    userPaused = true
     if (player) emit('pause', player.currentTime)
   })
   player.on('seek', () => {
@@ -125,8 +143,10 @@ function seekTo(time: number) {
 function setPaused(paused: boolean) {
   if (!player) return
   if (paused) {
+    userPaused = true
     player.pause()
   } else {
+    userPaused = false
     // play() 返回 promise，seek 缓冲 / 自动播放策略下可能 reject，需兜住
     const r = player.play?.()
     if (r && typeof (r as Promise<void>).catch === 'function') {
@@ -185,6 +205,16 @@ defineExpose({ seekTo, setPaused, getPlayer, clearHint })
 
   &--controlled &__el {
     pointer-events: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .anime-player {
+    border-radius: 0;
+
+    &__el {
+      max-height: 50vh;
+    }
   }
 }
 </style>

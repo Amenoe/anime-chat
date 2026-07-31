@@ -159,10 +159,19 @@ onBeforeUnmount(() => {
 @media (max-width: 768px) {
   .room-page {
     flex-direction: column;
+    overflow-y: auto;
+    overflow-x: hidden;
+
+    &__left {
+      flex: none;
+      padding: 0;
+      width: 100%;
+    }
 
     &__right {
+      flex: 1;
       width: 100%;
-      height: 50%;
+      min-height: 360px;
       border-left: none;
       border-top: 1px solid rgba(104, 198, 189, 0.12);
     }

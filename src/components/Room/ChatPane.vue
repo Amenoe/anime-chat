@@ -347,4 +347,55 @@ function copyRoomLink() {
     word-break: break-word;
   }
 }
+
+@media (max-width: 768px) {
+  .chat-pane {
+    height: 100%;
+
+    &__header {
+      padding: 8px 12px;
+    }
+
+    &__avatar {
+      margin-left: -8px;
+    }
+
+    &__list {
+      padding: 8px 12px;
+    }
+
+    &__input {
+      padding: 8px 12px 12px;
+      gap: 6px;
+    }
+
+    &__send {
+      height: 34px;
+      padding: 0 12px;
+    }
+  }
+
+  .chat-row {
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+
+  .chat-avatar {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .chat-bubble {
+    max-width: 80%;
+    padding: 6px 10px;
+
+    &__name {
+      font-size: 11px;
+    }
+
+    &__text {
+      font-size: 12px;
+    }
+  }
+}
 </style>

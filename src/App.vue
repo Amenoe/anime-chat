@@ -1,22 +1,41 @@
 <template>
   <div class="app-container">
-    <AppHeader></AppHeader>
-    <aside class="app-container__aside" :class="{ hide: !asideVisible }">
-      <!-- 切换按钮 -->
+    <!-- 桌面端：右侧头像 -->
+    <AppHeader v-if="!isMobile" />
+    <!-- 移动端：顶部导航栏 -->
+    <header v-if="isMobile" class="mobile-nav">
+      <span class="mobile-nav__brand">{{ WEB_NAME }}</span>
+      <nav class="mobile-nav__links">
+        <router-link
+          v-for="{ name, routeName, routePath, icon } in sideList"
+          :key="routeName"
+          class="mobile-nav__link"
+          :class="{ active: $route.fullPath.includes(routePath) }"
+          :to="{ name: routeName }"
+        >
+          <Icon :name="icon" />
+          <span>{{ name }}</span>
+        </router-link>
+      </nav>
+      <el-avatar class="mobile-nav__avatar" :size="28" :src="avatarUrl" @click="onAvatarClick" />
+    </header>
+    <!-- 桌面端：左侧边栏 -->
+    <aside v-if="!isMobile" class="app-container__aside" :class="{ hide: !asideVisible }">
       <div
         class="switch"
         :title="asideVisible ? '隐藏' : '展开'"
         @click="asideVisible = !asideVisible"
       ></div>
-      <!-- 侧边标题 -->
       <b v-show="asideVisible" class="animate__jello">{{ WEB_NAME }}</b>
       <AppAsideBar v-show="asideVisible" :side-list="sideList" />
     </aside>
-    <main class="app-container__main">
+    <main class="app-container__main" :class="{ 'app-container__main--mobile': isMobile }">
       <AppRouter />
     </main>
-    <!-- 全局二次确认弹窗宿主 -->
     <AppConfirmHost />
+    <!-- 移动端登录弹窗宿主（复用 AppHeader 的逻辑） -->
+    <LoginDialog v-if="isMobile" ref="loginRef" @go-register="showRegisterDialog" />
+    <RegisterDialog v-if="isMobile" ref="registerRef" />
   </div>
 </template>
 
@@ -25,18 +44,50 @@ import AppAsideBar from '@/layout/AppAsideBar.vue'
 import AppRouter from '@/layout/AppRouter.vue'
 import AppHeader from '@/layout/AppHeader.vue'
 import AppConfirmHost from '@/components/AppConfirm/AppConfirmHost.vue'
+import LoginDialog from '@/components/Login/LoginDialog.vue'
+import RegisterDialog from '@/components/Login/RegisterDialog.vue'
 import { useRouteStore } from '@/stores/modules/route'
+import { useLoginStore } from '@/stores/modules/login'
+import { resolveAvatarUrl } from '@/utils/avatar'
+
 const WEB_NAME = import.meta.env.VITE_APP_TITLE
 const routeStore = useRouteStore()
+const loginStore = useLoginStore()
 const sideList = routeStore.routeList
+const router = useRouter()
 
-const asideVisible = ref(window.innerWidth > 768)
+const mq = window.matchMedia('(max-width: 768px)')
+const isMobile = ref(mq.matches)
+const asideVisible = ref(!mq.matches)
 
-const onResize = () => {
-  asideVisible.value = window.innerWidth > 768
+const GUEST_AVATAR = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
+const isLogin = computed(() => loginStore.token !== '')
+const avatarUrl = computed(() => {
+  if (!isLogin.value) return GUEST_AVATAR
+  return resolveAvatarUrl(loginStore.userInfo?.avatar)
+})
+
+const loginRef = ref<InstanceType<typeof LoginDialog>>()
+const registerRef = ref<InstanceType<typeof LoginDialog>>()
+
+function onAvatarClick() {
+  if (isLogin.value) {
+    router.push('/user')
+  } else {
+    loginRef.value!.dialogVisible = true
+  }
 }
-onMounted(() => window.addEventListener('resize', onResize))
-onUnmounted(() => window.removeEventListener('resize', onResize))
+
+function showRegisterDialog() {
+  registerRef.value!.dialogVisible = true
+}
+
+const onMqChange = (e: MediaQueryListEvent | MediaQueryList) => {
+  isMobile.value = e.matches
+  asideVisible.value = !e.matches
+}
+onMounted(() => mq.addEventListener('change', onMqChange))
+onUnmounted(() => mq.removeEventListener('change', onMqChange))
 </script>
 <style lang="less">
 @import '~styles/app';
@@ -126,27 +177,89 @@ onUnmounted(() => window.removeEventListener('resize', onResize))
         opacity: 1;
       }
     }
+    &--mobile {
+      margin: 0;
+      height: 100%;
+      border-radius: 0;
+      padding-top: 48px;
+    }
   }
 }
 
-@media (max-width: 768px) {
-  .app-container {
-    &__aside {
-      position: fixed;
-      z-index: 100;
-      left: 0;
-      top: 0;
-      height: 100%;
-      border-radius: 0;
-      &.hide {
-        transform: translateX(-100%) !important;
-        width: 280px;
-      }
+/* 移动端顶部导航栏 */
+.mobile-nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  background: var(--aside-bg-color);
+  border-bottom: 1px solid rgba(104, 198, 189, 0.12);
+  box-sizing: border-box;
+
+  &__brand {
+    flex-shrink: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--primary-color);
+    margin-right: 6px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 72px;
+  }
+
+  &__links {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    &::-webkit-scrollbar {
+      display: none;
     }
-    &__main {
-      margin: 10px;
-      height: calc(100% - 20px);
-      border-radius: 12px;
+  }
+
+  &__link {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    color: var(--font-unactive-color);
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color 0.2s, background 0.2s;
+
+    i {
+      width: 14px;
+      height: 14px;
+    }
+
+    &.active,
+    &.router-link-exact-active {
+      color: var(--primary-color);
+      background: rgba(104, 198, 189, 0.12);
+    }
+  }
+
+  &__avatar {
+    flex-shrink: 0;
+    margin-left: 4px;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: border-color 0.2s;
+
+    &:hover {
+      border-color: var(--primary-color);
     }
   }
 }
