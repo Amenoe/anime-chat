@@ -103,6 +103,7 @@
           :bangumi-id="anime_id"
           :title="displayName"
           :alt-title="detailData.name !== detailData.name_cn ? detailData.name : undefined"
+          :cover="detailData.images?.common"
         />
       </section>
 
@@ -167,6 +168,7 @@ import type { UserAnimeStatus } from '@/api/types'
 import PlaybackPanel from '@/components/Player/PlaybackPanel.vue'
 import { listRooms, createRoom } from '@/api/room'
 import { appConfirm } from '@/composables/useConfirm'
+import { addPlayHistory } from '@/utils/play-history'
 
 const router = useRouter()
 const route = useRoute()
@@ -276,6 +278,15 @@ async function enterOrCreateRoom(sort?: number) {
 }
 
 function onEpClick(sort: number) {
+  const ep = episodes.value.find((e) => e.sort === sort)
+  addPlayHistory({
+    bangumiId: anime_id,
+    title: displayName.value || `番剧 #${anime_id}`,
+    cover: detailData.value?.images?.common || '',
+    episodeSort: sort,
+    episodeName: ep?.name_cn || ep?.name,
+    time: Date.now(),
+  })
   enterOrCreateRoom(sort)
 }
 

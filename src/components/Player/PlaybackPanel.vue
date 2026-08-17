@@ -101,12 +101,15 @@ import {
   loadCatalogPrefs,
   saveCatalogCache,
 } from '@/utils/media-catalog-cache'
+import { addPlayHistory } from '@/utils/play-history'
 import AnimePlayer from './AnimePlayer.vue'
 
 const props = defineProps<{
   bangumiId: number
   title?: string
   altTitle?: string
+  /** 封面图（用于最近播放记录） */
+  cover?: string
 }>()
 
 type RowStatus = 'pending' | 'searching' | 'done' | 'empty' | 'error'
@@ -222,6 +225,15 @@ function beginSession(s: PlaybackSessionView) {
   sessionId.value = s.id
   playUrl.value = null
   maybeSetPlayUrl(s)
+  if (playUrl.value) {
+    addPlayHistory({
+      bangumiId: props.bangumiId,
+      title: props.title || `番剧 #${props.bangumiId}`,
+      cover: props.cover || '',
+      episodeSort: episodeSort.value ?? null,
+      time: Date.now(),
+    })
+  }
   stopPoll()
   if (s.status !== 'ready' && s.status !== 'failed') {
     pollTimer = setInterval(refresh, 3000)
