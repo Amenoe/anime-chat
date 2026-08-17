@@ -1,25 +1,27 @@
-# 动漫聊天室
+# 动漫放映室（anime-chat）
 
-- 本人毕业设计 `动漫聊天室` 的客户端，界面参考 [masami](https://github.com/Adicwu/masami)
+动漫讨论平台前端：番剧浏览（Bangumi API）+ 追番 + 「放映室」一起看（左播放右聊天、房主强同步）。
 
-- 前端使用 `Vue3`+ `TS` + `Vite` 开发，组件库采用 `Element Plus`
+技术栈：Vue 3 + TypeScript + Vite + Pinia + Element Plus + Artplayer + hls.js + socket.io-client。
 
-- 使用 [web-norm](https://github.com/lyh0371/web-norm) 进行项目规范化搭建
+## 功能
 
-- 做的很烂 XD，只实现了基本的聊天功能，后面会慢慢改进的
+- 首页 / 搜索 / 详情（Bangumi 数据源），详情页点集进入放映室（列房 → 加入/创建）
+- 放映室：房主选源开播、全员同步进度（播放/暂停/seek/切集）、观众只读跟随、在线头像、聊天实时
+- 播放：流媒体直链代理 + HLS 同源分片，BT 磁力边下边播（依赖后端 qBittorrent）
+- 用户：登录注册、头像裁剪上传（MinIO）、追番（想看/在看/看完）、数据源订阅管理
 
----
+## 开发
 
-后端跳转至 [anime-chat-server](https://github.com/Amenoe/anime-chat-server)
+```bash
+pnpm install
+pnpm dev          # localhost:8012，/api 代理到 localhost:3000
+pnpm type-check   # vue-tsc --noEmit
+pnpm build-only   # vite build
+```
 
-## 界面截图
+环境变量见 `.env.development`（`VITE_SERVE_URL` / `VITE_BASE_API` 等）。
 
-![QQ截图20230210165113](https://github.com/Amenoe/image-hosting/raw/master/Other/QQ%E6%88%AA%E5%9B%BE20230210165113.png)
+后端仓库：[anime-chat-server](https://github.com/Amenoe/anime-chat-server)
 
-![QQ截图20230210165125](https://github.com/Amenoe/image-hosting/raw/master/Other/QQ%E6%88%AA%E5%9B%BE20230210165125.png)
-
-![QQ截图20230210165200](https://github.com/Amenoe/image-hosting/raw/master/Other/QQ%E6%88%AA%E5%9B%BE20230210165200.png)
-
-![QQ截图20230210165215](https://github.com/Amenoe/image-hosting/raw/master/Other/QQ%E6%88%AA%E5%9B%BE20230210165215.png)
-
-![QQ截图20230210165226](https://github.com/Amenoe/image-hosting/raw/master/Other/QQ%E6%88%AA%E5%9B%BE20230210165226.png)
+公共记忆与任务看板：[docs/PROJECT_MEMORY.md](../docs/PROJECT_MEMORY.md)
