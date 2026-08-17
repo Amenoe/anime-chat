@@ -30,7 +30,7 @@ export default defineConfig(({ mode }) => {
       AutoImport({
         imports: ['vue', 'vue-router'], // 自动导入vue和vue-router相关函数
         //自动引入ElementPlus相关函数和图标组件
-        resolvers: [ElementPlusResolver()],
+        resolvers: [ElementPlusResolver({ importStyle: 'css' })],
         dts: 'src/plugin/auto-import.d.ts', // 调整生成自动引入的文件位置
         // eslint报错解决
         eslintrc: {
@@ -44,11 +44,21 @@ export default defineConfig(({ mode }) => {
         // dirs: ['src/components'],
         resolvers: [
           // 自动导入 Element Plus 组件
-          ElementPlusResolver(),
+          ElementPlusResolver({ importStyle: 'css', locale: 'zh-cn' }),
         ],
         dts: 'src/plugin/components.d.ts',
       }),
     ],
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            // 播放器大依赖独立分包；Element Plus 走按需导入，由 Rollup 自动共享
+            player: ['artplayer', 'hls.js'],
+          },
+        },
+      },
+    },
     resolve: {
       alias: {
         '@': path.resolve('./src'),
