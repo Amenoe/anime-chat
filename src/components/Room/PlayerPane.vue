@@ -120,6 +120,7 @@ import {
   loadCatalogPrefs,
   saveCatalogCache,
 } from '@/utils/media-catalog-cache'
+import { addPlayHistory } from '@/utils/play-history'
 import AnimePlayer from '@/components/Player/AnimePlayer.vue'
 
 const roomStore = useRoomStore()
@@ -233,6 +234,21 @@ watch(playbackState, (ps) => {
   }
   p.setPaused(ps.paused)
 })
+
+// 开播 / 换源 / 切集时记录最近播放（进房即同步已有源，viewer 也会记录）
+watch(
+  () => playbackState.value?.stream_url || playbackState.value?.session_id,
+  (val) => {
+    if (!val || !bangumiId.value) return
+    addPlayHistory({
+      bangumiId: bangumiId.value,
+      title: animeTitle.value || `番剧 #${bangumiId.value}`,
+      cover: homeStore.animeDetail?.images?.common || '',
+      episodeSort: currentEpisodeSort.value ?? null,
+      time: Date.now(),
+    })
+  },
+)
 
 type RowStatus = 'pending' | 'searching' | 'done' | 'empty' | 'error'
 
