@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { io, type Socket } from 'socket.io-client'
 import { useLoginStore } from './login'
-import type { ChatMessage } from './chat'
+import type { ChatMessage } from '../types'
 import type { RoomGroup } from '@/api/room'
 
 export interface PlaybackState {
