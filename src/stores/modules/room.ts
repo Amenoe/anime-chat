@@ -275,6 +275,15 @@ export const useRoomStore = defineStore('room', () => {
       playbackState.value = data.playback_state
       messages.value = data.recent_messages || []
       onlineUsers.value = normalizeOnlineUsers(data.online_users)
+      console.log('[src-debug] joinRoom 回包', {
+        season_id: opts.seasonId,
+        group_episode_sort: data.group?.episode_sort,
+        group_playback_episode_sort: data.group?.playback_episode_sort,
+        ps_episode_sort: data.playback_state?.episode_sort,
+        ps_episode_id: data.playback_state?.episode_id,
+        ps_session_id: data.playback_state?.session_id,
+        ps_status: data.playback_state?.status,
+      })
       return data
     } finally {
       joining.value = false
@@ -317,6 +326,13 @@ export const useRoomStore = defineStore('room', () => {
       playbackState.value = data.playback_state
       messages.value = data.recent_messages || []
       onlineUsers.value = normalizeOnlineUsers(data.online_users)
+      console.log('[src-debug] createAndJoin 回包', {
+        season_id: data.group.season_id,
+        group_episode_sort: data.group?.episode_sort,
+        group_playback_episode_sort: data.group?.playback_episode_sort,
+        ps_episode_sort: data.playback_state?.episode_sort,
+        ps_episode_id: data.playback_state?.episode_id,
+      })
       return data
     } finally {
       joining.value = false

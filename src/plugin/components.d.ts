@@ -41,6 +41,7 @@ declare module '@vue/runtime-core' {
     RegisterDialog: typeof import('./../components/Login/RegisterDialog.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SourceDrawer: typeof import('./../components/Room/SourceDrawer.vue')['default']
   }
   export interface ComponentCustomProperties {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']
