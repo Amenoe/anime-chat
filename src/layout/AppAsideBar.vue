@@ -6,16 +6,22 @@
       :key="routeName"
       class="app-aside__bar-item"
       :class="{ active: $route.name === routeName }"
-      @click="$router.push({ name: routeName })"
     >
-      <Icon :name="icon" />
-      <p>{{ name }}</p>
+      <a
+        class="app-aside__bar-link"
+        :href="hrefOf(routeName)"
+        @click="onNavClick($event, routeName)"
+      >
+        <Icon :name="icon" />
+        <p>{{ name }}</p>
+      </a>
     </li>
   </ul>
 </template>
 
 <script setup lang="ts">
 import type { CSSProperties, PropType } from 'vue'
+import { useLeaveRoomGuard } from '@/composables/useLeaveRoomGuard'
 
 interface IRouteList {
   name: string
@@ -33,6 +39,21 @@ const props = defineProps({
 
 const $route = useRoute()
 const $router = useRouter()
+const { guardLeaveRoom } = useLeaveRoomGuard()
+
+/** a 标签真实 href：默认点击走 SPA，中键 / Cmd+点击可新开标签页 */
+function hrefOf(routeName: string): string {
+  return $router.resolve({ name: routeName }).href
+}
+
+async function onNavClick(e: MouseEvent, routeName: string) {
+  // 中键 / Ctrl / Cmd / Shift 点击：交给浏览器新开标签页，不拦截
+  if (e.button === 1 || e.metaKey || e.ctrlKey || e.shiftKey) return
+  e.preventDefault()
+  const ok = await guardLeaveRoom()
+  if (!ok) return
+  $router.push({ name: routeName })
+}
 
 const sliderStyle = computed(() => {
   const routeIndex = props.sideList.findIndex((item) => $route.fullPath.includes(item.routePath))
@@ -66,8 +87,6 @@ const sliderStyle = computed(() => {
     transition: all 0.25s;
   }
   &-item {
-    display: flex;
-    align-items: center;
     width: 100%;
     height: @liHeight;
     padding: 0 @liPadding;
@@ -81,6 +100,19 @@ const sliderStyle = computed(() => {
       i {
         color: #fff;
       }
+    }
+  }
+  &-link {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 100%;
+    text-decoration: none;
+    color: inherit;
+
+    &:focus-visible {
+      outline: 2px solid var(--primary-color);
+      outline-offset: -2px;
     }
     i {
       width: @fontSize;

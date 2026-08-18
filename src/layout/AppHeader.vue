@@ -14,10 +14,12 @@ import RegisterDialog from '@/components/Login/RegisterDialog.vue'
 import router from '@/router'
 import { useLoginStore } from '@/stores/modules/login'
 import { resolveAvatarUrl } from '@/utils/avatar'
+import { useLeaveRoomGuard } from '@/composables/useLeaveRoomGuard'
 
 const GUEST_AVATAR = 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png'
 
 const loginStore = useLoginStore()
+const { guardLeaveRoom } = useLeaveRoomGuard()
 const isLogin = computed(() => loginStore.token !== '')
 // 响应式读 userInfo.avatar；空值回落到默认头像
 const avatarUrl = computed(() => {
@@ -28,8 +30,10 @@ const avatarUrl = computed(() => {
 //组件实例
 const loginRef = ref<InstanceType<typeof LoginDialog>>()
 const registerRef = ref<InstanceType<typeof LoginDialog>>()
-const showDialog = () => {
+const showDialog = async () => {
   if (isLogin.value) {
+    const ok = await guardLeaveRoom()
+    if (!ok) return
     router.push('/user')
   } else {
     loginRef.value!.dialogVisible = true
