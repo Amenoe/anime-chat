@@ -372,15 +372,13 @@ const logoutClick = async () => {
   })
   if (!ok) return
 
-  updateUserStatus(loginStore.userInfo.user_id, 0)
-    .catch(() => undefined)
-    .finally(() => {
-      loginStore.logoutLocal()
-      ElNotification({
-        type: 'success',
-        title: '退出成功',
-      })
-    })
+  updateUserStatus(loginStore.userInfo.user_id, 0).catch(() => undefined)
+  // 先吊销后端 refreshToken（否则退出后它仍能换新 accessToken），再清本地
+  await loginStore.logoutAction()
+  ElNotification({
+    type: 'success',
+    title: '退出成功',
+  })
 }
 
 const formData = ref({
@@ -412,7 +410,23 @@ const updateClick = () => {
         type: 'success',
         title: '更新成功',
       })
+      const newPassword = payload.password
       formData.value.password = ''
+      // 改密会吊销该用户全部 refreshToken（含本机）；用新密码静默重登，避免 accessToken 到期后被登出
+      if (newPassword) {
+        try {
+          await loginStore.loginAction({
+            username: loginStore.userInfo!.username,
+            password: newPassword,
+          })
+        } catch {
+          ElNotification({
+            type: 'warning',
+            title: '请重新登录',
+            message: '密码已更新，请使用新密码重新登录',
+          })
+        }
+      }
     } catch {
       // 拦截器已提示
     } finally {

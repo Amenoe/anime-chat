@@ -94,6 +94,11 @@ export interface ILoginData {
   user_id: string
   username: string
   token: string
+  accessToken: string
+  refreshToken: string
+  tokenType?: 'Bearer'
+  expiresIn?: number
+  refreshExpiresIn?: number
   /** 后端成熟化后附带完整用户信息，可省一次 getUserInfo */
   user?: IUserInfo
 }

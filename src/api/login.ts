@@ -13,6 +13,26 @@ export function login(data: ILogin) {
   })
 }
 
+export function refreshToken(refreshToken: string) {
+  return request.post<ILoginData>({
+    url: '/auth/refresh',
+    data: { refreshToken },
+    skipAuthRefresh: true,
+  })
+}
+
+/**
+ * 登出：让后端吊销该条 refreshToken，使其无法再换新 accessToken
+ * @param refreshToken 当前设备的 refreshToken
+ */
+export function logout(refreshToken: string) {
+  return request.post<{ revoked: boolean }>({
+    url: '/auth/logout',
+    data: { refreshToken },
+    skipAuthRefresh: true,
+  })
+}
+
 /**
  * 注册接口
  * @param data

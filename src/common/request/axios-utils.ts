@@ -2,6 +2,13 @@ import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig } from 'axios'
 import localCache from '@/utils/cache'
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    skipAuthRefresh?: boolean
+    _authRetried?: boolean
+  }
+}
+
 /** 并发 401 时只提示一次 */
 let authExpiredNotifying = false
 
@@ -11,6 +18,7 @@ let authExpiredNotifying = false
  */
 function handleUnauthorized() {
   localCache.delCache('token')
+  localCache.delCache('refreshToken')
   localCache.delCache('userInfo')
   void import('@/stores/modules/login')
     .then(({ useLoginStore }) => {
@@ -28,6 +36,26 @@ function handleUnauthorized() {
   window.setTimeout(() => {
     authExpiredNotifying = false
   }, 3000)
+}
+
+let refreshPromise: Promise<string> | null = null
+
+/**
+ * 用 refreshToken 换新 accessToken。
+ * 统一走 login store 的 refreshAction（其内部带 skipAuthRefresh，不会递归刷新），
+ * 这样 store 的 ref 与 localStorage 一起更新；并发 401 由 refreshPromise 合并为一次请求。
+ * 动态 import 避免 request ↔ login store 循环依赖。
+ */
+function renewAccessToken(): Promise<string> {
+  if (!refreshPromise) {
+    refreshPromise = import('@/stores/modules/login')
+      .then(({ useLoginStore }) => useLoginStore().refreshAction())
+      .then((data) => data.accessToken || data.token || '')
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
 }
 
 export default class AxiosUtils {
@@ -93,6 +121,22 @@ export default class AxiosUtils {
         const status = error.response?.status
         const payload = error.response?.data
         if (status === 401 || payload?.code === 401) {
+          const request = error.config as
+            | (AxiosRequestConfig & { _authRetried?: boolean })
+            | undefined
+          if (request && !request.skipAuthRefresh && !request._authRetried) {
+            request._authRetried = true
+            return renewAccessToken()
+              .then((access) => {
+                request.headers = request.headers || {}
+                request.headers.Authorization = `Bearer ${access}`
+                return this.instance.request(request)
+              })
+              .catch((refreshError) => {
+                handleUnauthorized()
+                return Promise.reject(refreshError)
+              })
+          }
           handleUnauthorized()
           return Promise.reject(error)
         }
