@@ -147,7 +147,10 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 - **验证**：两仓 tsc / build / prettier / eslint 全绿；**真实启动后端跑双 token 端到端 24/24**
   （登录 → accessToken 鉴权 → refreshToken 不能访问业务接口 → 刷新轮换 → 旧 token 复用被拒并整户吊销
   → 登出吊销 → 缺参 400 → 改密吊销全部会话 → 新密码可登录 → 删号清理），测试账号与孤儿记录已清理。
-- **提交**：前端 `ca64b7a` + merge `5adc9de`；后端 `6cfeabe` + merge `ae2824d`；均已推送 origin main，分支已删。
+  验收脚本已入库为 `anime-chat-server/scripts/auth-e2e.mjs`（可重复执行，避免再放 `/tmp` 丢失）。
+  另实测 `docs/schema.sql` 可在空库完整执行并建出全部 10 张表（临时库已删除）。
+- **提交**：功能提交 前端 `ca64b7a` + merge `5adc9de`；后端 `6cfeabe` + merge `ae2824d`。
+  文档提交 前端 `01234e8`、后端 `6e8fb91`、`docs` 仓 `133eb5a`。均已推送 origin main，分支已删。
 - **遗留**：前端 `.env.production`（`VITE_BASE_URL` `/pro/` → `/`）仍未提交，待用户确认。
 
 ### 2026-08-17 · 收尾清理与优化（feat/cleanup-and-perf，已合入 main 并推送）

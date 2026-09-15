@@ -151,7 +151,13 @@ NODE_ENV=development node dist/main.js   # 看到 "Nest application successfully
 ```
 
 **鉴权类改动**必须打真实接口跑一遍全链路（注册 → 登录 → 业务接口 → 刷新 → 复用检测 →
-登出 → 改密 → 删号清理）。本次双 token 落地即按此验收 24/24。
+登出 → 改密 → 删号清理）。脚本已入库，改完直接跑：
+
+```bash
+cd anime-chat-server && node scripts/auth-e2e.mjs    # 24 项断言，测试账号自动清理
+```
+
+（本次双 token 落地即按此验收 24/24。此前这类脚本放在 `/tmp` 会随重启丢失，故入库。）
 
 **UI 类改动**需 headless Chrome 打真实页面（见 `PROJECT_MEMORY.md` 修复记录里的做法），
 不能只凭类型检查就认为功能可用。
