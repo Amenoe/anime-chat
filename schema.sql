@@ -1,0 +1,169 @@
+-- anime_chat 全量表结构（可手工执行；dev 也可依赖 TypeORM synchronize）
+-- 数据库：CREATE DATABASE IF NOT EXISTS anime_chat DEFAULT CHARSET utf8mb4;
+-- 与 TypeORM 实体保持同步：改实体后务必回来更新本文件
+
+CREATE TABLE IF NOT EXISTS `user` (
+  `user_id` char(36) NOT NULL,
+  `username` varchar(255) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `nickname` varchar(255) NOT NULL,
+  `avatar` varchar(255) NOT NULL DEFAULT '',
+  `role` enum('root','user') NOT NULL DEFAULT 'user',
+  `status` tinyint NOT NULL DEFAULT 0,
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`user_id`),
+  UNIQUE KEY `IDX_user_username` (`username`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─── 双 token 会话（accessToken 不落库，只存 refreshToken） ─────
+-- 只存 sha256(jwt)，不存明文：库被拖走也无法冒用
+-- 轮换：每次刷新把旧行置 revoked=1 并写 replaced_by；旧行被再次使用视为泄露，整户吊销
+CREATE TABLE IF NOT EXISTS `refresh_token` (
+  `id` char(36) NOT NULL,
+  `user_id` varchar(36) NOT NULL,
+  `token_hash` char(64) NOT NULL,
+  `expires_at` datetime NOT NULL,
+  `revoked` tinyint NOT NULL DEFAULT 0,
+  `replaced_by` varchar(36) NOT NULL DEFAULT '',
+  `user_agent` varchar(255) NOT NULL DEFAULT '',
+  `last_used_at` datetime DEFAULT NULL,
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `IDX_refresh_token_hash` (`token_hash`),
+  KEY `IDX_refresh_token_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `user_anime` (
+  `id` char(36) NOT NULL,
+  `user_id` varchar(255) NOT NULL,
+  `bangumi_id` int NOT NULL,
+  `status` enum('wish','watching','done') NOT NULL,
+  `title` varchar(255) DEFAULT NULL,
+  `name_cn` varchar(255) DEFAULT NULL,
+  `cover` varchar(512) DEFAULT NULL,
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `update_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `IDX_user_anime_user_bangumi` (`user_id`,`bangumi_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─── 聊天 / 放映室 ───────────────────────────────────────────────
+
+-- group：旧聊天室 + 放映室共用表
+-- season_id 为放映室业务 key（随机 hex，全局 UNIQUE）；episode_* 仅内容绑定，非房间主键
+CREATE TABLE IF NOT EXISTS `group` (
+  `group_id` char(36) NOT NULL,
+  `user_id` varchar(255) NOT NULL DEFAULT 'admin',
+  `anime_id` int NOT NULL,
+  `group_name` varchar(255) NOT NULL,
+  `notice` varchar(255) NOT NULL DEFAULT '文明交流',
+  `create_time` varchar(255) NOT NULL,
+  `season_id` varchar(32) NOT NULL,
+  `host_user_id` varchar(36) NOT NULL DEFAULT '',
+  `is_public` tinyint NOT NULL DEFAULT 1,
+  `episode_id` int DEFAULT NULL,
+  `episode_sort` float DEFAULT NULL,
+  `playback_status` varchar(16) NOT NULL DEFAULT 'idle',
+  `playback_episode_sort` float DEFAULT NULL,
+  `playback_episode_id` int DEFAULT NULL,
+  `playback_session_id` varchar(36) NOT NULL DEFAULT '',
+  `playback_stream_url` text,
+  `playback_position` float NOT NULL DEFAULT 0,
+  `playback_updated_at` datetime DEFAULT NULL,
+  `playback_title` varchar(512) NOT NULL DEFAULT '',
+  PRIMARY KEY (`group_id`),
+  UNIQUE KEY `IDX_group_season_id` (`season_id`),
+  KEY `IDX_group_anime_id` (`anime_id`),
+  KEY `IDX_group_anime_ep` (`anime_id`,`episode_sort`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `group_message` (
+  `id` char(36) NOT NULL,
+  `group_id` varchar(255) NOT NULL,
+  `user_id` varchar(255) NOT NULL,
+  `message` text NOT NULL,
+  `message_type` varchar(255) NOT NULL DEFAULT 'text',
+  `time` bigint NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `IDX_group_message_group_id` (`group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `group_user_map` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `group_id` varchar(255) NOT NULL,
+  `user_id` varchar(255) NOT NULL,
+  PRIMARY KEY (`id`),
+  KEY `IDX_group_user_map_group` (`group_id`,`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─── 播放会话（流媒体 / BT 边下边播） ───────────────────────────
+
+CREATE TABLE IF NOT EXISTS `playback_session` (
+  `id` char(36) NOT NULL,
+  `user_id` varchar(36) NOT NULL,
+  `group_id` varchar(36) NOT NULL DEFAULT '',
+  `bangumi_id` int DEFAULT NULL,
+  `episode_sort` float DEFAULT NULL,
+  `source_uri` text NOT NULL,
+  `info_hash` varchar(64) NOT NULL DEFAULT '',
+  `file_index` int NOT NULL DEFAULT -1,
+  `file_name` varchar(512) NOT NULL DEFAULT '',
+  `local_path` varchar(1024) NOT NULL DEFAULT '',
+  `minio_object` varchar(512) NOT NULL DEFAULT '',
+  `status` varchar(32) NOT NULL DEFAULT 'created',
+  `error_message` varchar(512) NOT NULL DEFAULT '',
+  `progress` float NOT NULL DEFAULT 0,
+  `size_bytes` bigint NOT NULL DEFAULT 0,
+  `downloaded_bytes` bigint NOT NULL DEFAULT 0,
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `update_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `IDX_playback_session_user` (`user_id`),
+  KEY `IDX_playback_session_group` (`group_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─── 数据源订阅（用户浏览器拉取解析） ──────────────────────────
+
+CREATE TABLE IF NOT EXISTS `media_source` (
+  `id` char(36) NOT NULL,
+  `user_id` varchar(36) NOT NULL,
+  `name` varchar(128) NOT NULL DEFAULT '',
+  `url` varchar(1024) NOT NULL,
+  `url_hash` varchar(64) NOT NULL,
+  `kind` varchar(16) NOT NULL DEFAULT 'mixed',
+  `enabled` tinyint NOT NULL DEFAULT 1,
+  `sort_order` int NOT NULL DEFAULT 0,
+  `last_fetched_at` datetime DEFAULT NULL,
+  `last_error` varchar(512) NOT NULL DEFAULT '',
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `update_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `IDX_media_source_user_hash` (`user_id`,`url_hash`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─── 本地番剧表（Bangumi 迁移后仅作兜底，addGroup 旧路径使用） ──
+
+CREATE TABLE IF NOT EXISTS `anime` (
+  `anime_id` int NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `category` varchar(255) NOT NULL,
+  `cover` varchar(255) NOT NULL,
+  `pub_time` varchar(255) NOT NULL,
+  `update_time` varchar(255) NOT NULL,
+  `description` text NOT NULL,
+  `season` varchar(255) NOT NULL,
+  `rank` varchar(255) NOT NULL,
+  `region` varchar(255) NOT NULL,
+  `status` varchar(255) NOT NULL,
+  PRIMARY KEY (`anime_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `anime_ep` (
+  `ep_id` int NOT NULL,
+  `anime_id` int NOT NULL,
+  `title` varchar(255) NOT NULL,
+  `cover` varchar(255) NOT NULL,
+  `first_date` varchar(255) NOT NULL,
+  `link` varchar(255) NOT NULL,
+  PRIMARY KEY (`ep_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
