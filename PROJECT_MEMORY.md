@@ -117,6 +117,8 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 12 | P2 | PlayerPane 拆分重构 | ✅ 2026-08-18 | 1209 行 → 375 行；拆出 useSourceSearch / SourceDrawer / source-quality；已提交推送 |
 | 13 | P1 | JWT 双 token + 前端静默刷新 | ✅ 2026-09-15 | accessToken 2h / refreshToken 30d 落库轮换吊销；前端 401 单次重试 + 并发合并；真实接口验收 24/24 |
 | 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端 `CLAUDE.md`；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
+| 15 | P2 | AI 对话 MVP（对话 + `search_anime` 工具 + SSE + 配额） | ⬜ | 见 `ai-chat-tech-stack.md` §10；依赖看板 #7 的路由占位（已完成） |
+| 16 | P2 | RAG / 知识库 / Workflow 能力建设 | ⬜ | 见 `ai-rag-practice-roadmap.md`；**待定 Python 服务 vs LangChain.js**（该文档 §3、§9） |
 
 ---
 

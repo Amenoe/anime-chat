@@ -139,6 +139,11 @@ event: done          data: {"conversationId":"...","finishReason":"stop"}
 
 ### 4.4 检索与召回
 
+> ⚠️ **结论时效**：本节按「尽快出可用功能」的目标得出「MVP 不引向量库」。
+> 若目标是**对齐 AI 岗位 JD、积累 RAG / 知识库 / LangChain / Workflow 实践**，
+> 该结论不再适用 —— 见 `ai-rag-practice-roadmap.md`（§0 说明了目标变化如何翻转取舍，
+> §2 划清了「哪些 RAG 是真需求」的界线）。
+
 | 方案 | 何时用 | 依赖 |
 | --- | --- | --- |
 | **结构化检索（MVP 首选）** | 覆盖 90% 的「找番」需求 | 无（Bangumi 搜索已支持） |
