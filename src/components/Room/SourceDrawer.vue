@@ -195,6 +195,8 @@ onBeforeUnmount(() => {
   &__avatar {
     flex-shrink: 0;
     background: var(--bg-color);
+    /* 无图标时 el-avatar 显示首字，默认白字在亮色底上看不见 */
+    color: var(--font-color);
   }
 
   &__main {

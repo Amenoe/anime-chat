@@ -162,11 +162,17 @@ onUnmounted(() => mq.removeEventListener('change', onMqChange))
     }
   }
   &__main {
+    /*
+     * 卡片圆角。同时以变量下发给 .page —— 它用等高的上下透明边框给滚动条
+     * 让位，否则滚动条滚到顶会被这里的圆角裁掉一块。
+     * overflow: hidden 必须保留：路由上下滑动过渡要靠它把翻页裁在卡片内。
+     */
+    --main-radius: var(--df-radius);
     margin-top: @frameTop;
     margin-bottom: @frameTop;
     box-sizing: border-box;
     height: calc(100% - @frameTop * 2);
-    border-radius: var(--df-radius);
+    border-radius: var(--main-radius);
     flex: 1;
     overflow: hidden;
     position: relative;
@@ -178,9 +184,10 @@ onUnmounted(() => mq.removeEventListener('change', onMqChange))
       }
     }
     &--mobile {
+      /* 移动端整屏铺满、无圆角，相应地 .page 也不用给滚动条让位 */
+      --main-radius: 0;
       margin: 0;
       height: 100%;
-      border-radius: 0;
       padding-top: 48px;
     }
   }

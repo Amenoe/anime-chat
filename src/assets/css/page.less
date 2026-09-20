@@ -1,9 +1,19 @@
 .page {
   width: 100%;
   height: 100%;
-  // border-radius: var(--df-radius);
   overflow-y: auto;
   background: var(--box-bg-color);
-  padding: 24px;
+  /*
+   * 上下各留一条「透明边框」，高度等于卡片圆角：
+   * 滚动条画在 padding box 上，于是它上下都不会顶进 .app-container__main
+   * 的圆角里被裁掉（原来滚到顶时滑块会被切掉一块）。
+   *
+   * 背景默认按 border-box 绘制、会铺到透明边框下面，所以外观与原来的
+   * `padding: 24px` 完全一致（内容起点、可滚动内容都没变），
+   * 而且父容器的 overflow: hidden 照旧保留 —— 路由上下滑动过渡依赖它裁剪。
+   */
+  border-top: var(--main-radius, 24px) solid transparent;
+  border-bottom: var(--main-radius, 24px) solid transparent;
+  padding: 0 24px;
   box-sizing: border-box;
 }

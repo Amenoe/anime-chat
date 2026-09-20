@@ -1,7 +1,7 @@
 <template>
   <div id="user" class="page">
     <template v-if="isLogin">
-      <el-tabs v-model="activeName" class="user-tabs" @tab-change="onTabChange">
+      <el-tabs v-model="activeName" class="user-tabs">
         <el-tab-pane label="基本资料" name="userinfo">
           <div class="avatar-preview">
             <el-avatar :size="72" :src="currentAvatar" />
@@ -705,8 +705,10 @@ function onSiteDrop(to: number) {
   persistPrefs()
 }
 
-/** 按分区懒加载数据：切 Tab 与「直接带 ?tab= 进入」共用同一份逻辑 */
+/** 按分区懒加载数据 */
 function ensureTabData(name: string) {
+  // 未登录时页面根本不渲染 Tab，不能去拉数据（否则白挨一个 401、还会弹「请重新登录」）
+  if (!isLogin.value) return
   if (name === 'collection') {
     loadCollection()
   }
@@ -718,25 +720,36 @@ function ensureTabData(name: string) {
   }
 }
 
-function onTabChange(name: string | number) {
-  ensureTabData(String(name))
-}
-
-// 支持 /user?tab=collection 直达（右上角头像下拉菜单用）
-onMounted(() => {
+/** 把 ?tab= 同步到当前分区；返回是否真的发生了切换 */
+function applyTabFromQuery(): boolean {
   const tab = String(route.query.tab || '')
   if (TAB_NAMES.includes(tab) && tab !== activeName.value) {
-    // 赋值会触发 el-tabs 的 tab-change，由 onTabChange 去加载
     activeName.value = tab
-    return
+    return true
   }
-  ensureTabData(activeName.value)
+  return false
+}
+
+// 唯一的数据加载 + URL 回写入口：点 Tab、下拉菜单改 ?tab=，最终都汇聚到这里
+watch(activeName, (name) => {
+  ensureTabData(name)
+  if (String(route.query.tab || '') !== name) {
+    void router.replace({ path: '/user', query: { tab: name } })
+  }
 })
 
-// 让 URL 跟随 Tab，刷新/分享后仍停在同一个分区
-watch(activeName, (name) => {
-  if (String(route.query.tab || '') === name) return
-  void router.replace({ path: '/user', query: { tab: name } })
+/*
+ * 外部改 ?tab= 时切换分区。
+ * 右上角头像下拉菜单在「已经处于 /user」时只会改 query、不会重建组件，
+ * 只靠 onMounted 读一次是收不到的（之前就是漏了这个 watch）。
+ */
+watch(() => route.query.tab, applyTabFromQuery)
+
+onMounted(() => {
+  // 有合法的 ?tab= 时由上面的 watch 负责加载；否则按当前分区加载
+  if (!applyTabFromQuery()) {
+    ensureTabData(activeName.value)
+  }
 })
 
 function goDetail(id: number) {
@@ -763,7 +776,8 @@ async function onCancel(bangumiId: number) {
   position: static !important;
 }
 :deep(.el-tabs__item) {
-  color: #fff;
+  /* 原来写死 #fff：亮色下是白字压白底，只有选中态（主题色）能看清 */
+  color: var(--font-color);
   font-size: 18px;
   font-weight: 700;
 }
@@ -845,7 +859,8 @@ async function onCancel(bangumiId: number) {
     object-fit: cover;
     border-radius: 6px;
     flex-shrink: 0;
-    background: #111;
+    /* 封面图未加载完时的底衬，跟随主题 */
+    background: var(--surface-strong);
   }
 
   &__body {
@@ -932,7 +947,7 @@ async function onCancel(bangumiId: number) {
   }
 
   &--child {
-    background: rgba(47, 48, 66, 0.65);
+    background: var(--surface-panel);
   }
 
   &--off {
@@ -950,7 +965,9 @@ async function onCancel(bangumiId: number) {
 
   &__avatar {
     flex-shrink: 0;
-    background: #1e1d2b;
+    background: var(--bg-color);
+    /* 无图标时 el-avatar 显示名称首字，默认白字在亮色底上看不见 */
+    color: var(--font-color);
   }
 
   &__main {
