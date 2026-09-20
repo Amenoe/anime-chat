@@ -126,6 +126,62 @@ anime-ai（三选一）
 NestJS 只做「鉴权 + 配额 + 转发 + 把当前用户上下文带给 AI 服务」，
 **不碰检索逻辑**——这条边界要守住，否则又变回单体。
 
+### 3.5 落地计划（2026-09-20 已定：走 Java）
+
+**决策依据**：
+- 本机已有 **Java 25.0.4 LTS + Maven 3.9.9**（`/usr/libexec/java_home` 另装 17/21/11）；
+- 有 Java 后端经验 → 复用已有杠杆，只需学 AI/RAG 层，不必同时学新语言；
+- 暂无明确目标岗位 → 优化目标是「**先做出东西**」，而不是 JD 对齐。
+
+> 这不是死路：RAG 的概念（切分 / 召回 / 重排 / 评估 / 编排）与语言无关，
+> 日后若要转 Python 岗，换的是库不是思路，迁移成本主要在 API 语法。
+
+**技术选型**
+
+| 项 | 选择 | 版本 | 说明 |
+| --- | --- | --- | --- |
+| 宿主 | Spring Boot | **4.1.1** | Spring AI 2.0.1 明确依赖 Boot 4.1.1；Java 基线 17（本机 25 ✅） |
+| AI 框架（主） | Spring AI | **2.0.1** | GA；含 `spring-ai-rag`、`spring-ai-vector-store-advisor`、`spring-ai-tool-search-advisor`、`spring-ai-retry`；Advisor 模式接线极短 |
+| AI 框架（备选） | LangChain4j | **1.20.0** | 概念与 Python LangChain 近乎 1:1（`EmbeddingStore`/`ContentRetriever`/`RetrievalAugmentor`/`AiServices`），且独有 `bge-small-zh` 本地 embedding 与 `onnx-scoring` 重排 —— **想强化 LangChain 概念迁移就选它** |
+| Workflow | LangGraph4j | **1.9.0** | 同时有 `langgraph4j-spring-ai` 与 `langgraph4j-langchain4j` 集成模块；`mysql-saver` 可持久化状态 |
+| 向量库 | Qdrant | client **1.19.0** | 容器写法复用 `docker-compose.playback.yml` |
+| Embedding | **远程 API** | — | Java 无 BGE-M3 本地实现 → 走 阿里 `text-embedding-v3` / 智谱 `embedding-3` / SiliconFlow 的 BGE-M3 |
+| 评估 | **Python 旁路脚本** | ragas 0.4.3 | 见下 |
+
+**关键设计：评估走 Python 旁路，不进服务**
+
+Java 的最大缺口是没有 ragas 对等物（§6 已核实）。但**评估是离线批处理，不在服务链路里**——
+所以不需要为此把整个服务改成 Python：
+
+```
+golden set (JSON: 问题 + 期望 subject_id)
+        │
+        ├─→ 调 Java 服务的 /internal/retrieve（只返回检索结果，不生成）
+        │        └─ 输出 results.json
+        │
+        └─→ Python 脚本（约 100 行）：读 results.json → ragas 算
+             Hit Rate@k / MRR / Context Precision / Faithfulness → 生成对比报告
+```
+
+这样：**服务用 Java（复用你的强项），评估用 Python（补上生态缺口）**，
+而且这个「离线评估旁路」本身是标准工程实践，面试时也好讲。
+
+**里程碑（每个都能独立交付）**
+
+| # | 交付 | 技术 | 验收 |
+| --- | --- | --- | --- |
+| **M1** | 链路打通（不含 RAG） | Boot 4.1.1 + Spring AI 2.0.1；`POST /internal/ai/chat` SSE；一个 `search_anime` 工具；NestJS 转发 + 配额；前端手写 SSE 消费 | 前端能流式显示回答，工具调用返回番剧卡片 |
+| **M2** | 最简 RAG | Qdrant 容器；批量导 `anime.description`；`search_knowledge` 工具 | 「想不起名字，主角是红发剑士」能召回候选 |
+| **M3** | 评估旁路 | golden set 80 条 + Python ragas 脚本 | 产出第一份 Hit Rate@k 基线数字 |
+| **M4** | 混合检索 + rerank | BM25（Lucene/Tika）+ 向量 + RRF 融合；`onnx-scoring` 或远程 rerank | 对比 M3 基线，指标提升且报告里有延迟代价 |
+| **M5** | 站内语料 + 权限隔离 | 导 `group_message`；按 `group_id` 强制 pre-filter | 「我们房上周聊的那部番」可答，且跨群检索不到 |
+| **M6** | LangGraph4j Workflow | 澄清 → 检索 → 推荐 → 确认 → 建房；`interrupt` 等用户确认 | 推荐结果一键开放映室 |
+
+> 建议先做 **M1 → M2 → M3**：到 M3 就有「能演示 + 有数字」的最小闭环，
+> 比先把所有功能做完再想评估要好得多。
+
+---
+
 ---
 
 ## 4. 语料盘点（本项目的真实语料）
@@ -353,18 +409,26 @@ LangGraph 的 state/channel 设计；写了 RAG 就要能被追问切分、召�
 
 ---
 
-## 9. 待确认的决策点
+## 9. 决策记录
 
-**最关键的一问：你的目标岗位是哪一类？**
-- 大厂/独角兽的 RAG、知识库、算法应用岗 → Python 基本是硬门槛
-- 传统企业/银行/国企的「AI 应用开发」岗 → Java 完全可行，但通常还要求 Java 后端深度
-- 只想有东西能演示、暂不求职 → TypeScript（LangChain.js），零新运行时
+### 已确认（2026-09-20）
 
-其余：
-1. **Python / Java / TypeScript 三选一**（§3）—— 决定后面所有工作量分配。
-2. **你已有的语言底子**：有 Java 后端经验选 Java，有 Python/无 Java 选 Python，都没有先走 TS。
-3. **时间预算**：2 周出能演示的 RAG，还是 2–3 个月做完整体系？
-4. **是否接受多一个运行时**：多一个 AI 服务 + Qdrant 容器的运维成本。
-5. **评估自研的接受度**：选 Java 就必须自研评估指标（无 ragas 对等物），这块工作量不小但很能讲。
-6. **字幕语料**：是否愿意做 ASR 自产（推荐），还是先用简介/章节/站内记录起步？
-7. **是否开源部署**：涉及语料版权与 API key 成本。
+| # | 决策 | 结论 |
+| --- | --- | --- |
+| 1 | 目标岗位 | **暂无明确岗位，先做出东西** → 优化目标从「JD 对齐」转为「最快跑出可演示闭环」 |
+| 2 | 语言底子 | **有 Java 后端经验**；本机 Java 25.0.4 LTS + Maven 3.9.9 |
+| 3 | AI 服务语言 | **Java**（依据与落地计划见 §3.5） |
+| 4 | 评估缺口对策 | **Python 旁路脚本**，不把服务改成 Python（§3.5） |
+
+> 若日后明确要投互联网 AI 岗，需重新评估是否迁 Python —— 届时迁移的是库 API，
+> 不是 RAG 概念，成本可控。§3 的三方对比仍然有效。
+
+### 仍待确认
+
+1. **Spring AI vs LangChain4j**：§3.5 推荐 Spring AI（GA、Spring 原生、接线短）；
+   若更看重 LangChain 概念迁移与本地模型（`bge-small-zh`/`onnx-scoring`），选 LangChain4j。
+2. **Embedding 供应商**：Java 无 BGE-M3 本地实现，需在 阿里 / 智谱 / SiliconFlow 中选一家。
+3. **时间预算**：2 周出 M1+M2，还是 2–3 个月做到 M6？
+4. **评估脚本的接受度**：接受「服务 Java + 评估 Python」的混合形态。
+5. **字幕语料**：Java 侧 ASR 成本高（DJL 手搓）→ 建议 M5 之后再考虑，或改用播放源自带字幕轨。
+6. **是否开源部署**：涉及语料版权与 API key 成本。
