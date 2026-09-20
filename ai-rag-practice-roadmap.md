@@ -71,26 +71,40 @@
 
 ---
 
-## 3. 架构选择：Python AI 服务 vs LangChain.js
+## 3. 架构选择：Python / Java / TypeScript 三选一
 
-这是必须先定的岔路口。
+> **先纠正一个常见误解**：本项目后端是 **NestJS（TypeScript）**，不是 Python。
+> 所以「用 Java 代替 Python」这个说法不准确 —— 无论选 Python 还是 Java，
+> 都是**引入第二种语言、第三个运行时**，边际成本一样。真正的问题是：
+> **AI 服务用哪种语言写**，而这个答案取决于你要投哪类岗位、以及你已有什么底子。
 
-| | A. 独立 Python 服务（推荐） | B. LangChain.js 留在 NestJS |
-| --- | --- | --- |
-| 对齐 JD | ✅ 国内 RAG/知识库岗位几乎全是 Python | ⚠️ LangChain.js 概念同源，但 JD 少见 |
-| LangGraph | ✅ Python 版最成熟（`langgraph@1.2.11`） | ✅ 也有（`@langchain/langgraph@1.4.16`） |
-| 评估 | ✅ `ragas@0.4.3` 只有 Python | ❌ 需自研指标 |
-| 本地模型 | ✅ `FlagEmbedding` 跑 BGE-M3 / reranker | ❌ 基本只能调 API |
-| 文档解析 | ✅ `unstructured@0.27.6` 生态完整 | ❌ 弱 |
-| 复用现有 | ⚠️ 要起第二个运行时 | ✅ 全部复用 NestJS/TypeORM |
-| 学习成本 | 要会 Python + FastAPI | 现有 TS 技能直接上 |
-| 架构真实性 | ✅ 业务后端 / AI 服务分离，就是企业主流做法 | ⚠️ 单体，面试官可能问「为什么 AI 和业务耦合」 |
+| | A. Python 服务 | B. Java 服务 | C. LangChain.js 留在 NestJS |
+| --- | --- | --- | --- |
+| 框架 | FastAPI + LangChain/LangGraph | Spring Boot + Spring AI 2.0.1 / LangChain4j 1.20.0 | NestJS + LangChain.js |
+| 对齐 JD | ✅ RAG/知识库/算法岗几乎硬性要求 | ⚠️ 多为「Java 后端 + AI 应用」，AI 是加分项 | ❌ JD 少见 |
+| Workflow 编排 | ✅ `langgraph@1.2.11` | ✅ `langgraph4j@1.9.0`（36 模块，含 mysql/redis/postgres checkpointer、studio 可视化、agent-handoff） | ✅ `@langchain/langgraph@1.4.16` |
+| **评估（RAGAS 对等）** | ✅ `ragas@0.4.3` | ❌ **无**（LangChain4j 无 evaluation 模块；Spring AI 272 模块亦无）需自研 | ❌ 需自研 |
+| 本地中文 embedding | ✅ BGE-M3 / bge-large-zh（`FlagEmbedding`） | ⚠️ 仅 `bge-small-zh`（512 维），无 BGE-M3；要 M3 得走远程 API 或 DJL 自导 ONNX | ❌ 基本只能调 API |
+| 本地 reranker | ✅ `bge-reranker-v2-m3` | ⚠️ `langchain4j-onnx-scoring` 有，但要自备 ONNX 模型 | ❌ |
+| 文档解析 | ✅ `unstructured@0.27.6` | ✅ **Tika 4.0.0**（企业场景其实最强） | ❌ 弱 |
+| 向量库 | ✅ qdrant-client 1.19.1 | ✅ Qdrant client 1.19.0 / Spring AI 原生 starter | ✅ @langchain/qdrant |
+| ASR 自产字幕 | ✅ `faster-whisper` 一行装 | ❌ DJL 手搓，性价比低 | ❌ |
+| 与现有栈摩擦 | 中（新语言 + 新运行时） | 中（新语言 + 新运行时） | ✅ 最低（同语言同仓） |
+| 适合谁 | 无名语言包袱、目标 AI 岗 | **已有 Java 后端经验**、目标传统企业/银行 | 只想快速出东西、暂不求职 |
 
-**推荐 A**，理由就是你自己的目标：这些 JD 要的是 Python 生态。而且「业务后端调 AI 服务」
-本身要处理**流式转发、鉴权传递、超时降级、配额**——这些也是面试内容，不是额外负担。
+### 结论
 
-**但如果你 Python 零基础**，建议反过来：先用 B 走完阶段 1–2 建立 RAG 概念（拆分、召回、重排），
-再迁到 A。概念是通用的，语言只是壳。**不要**为了「看起来对口」硬上 Python 然后卡在环境上三周。
+- **有 Java 后端基础 → 选 B（Java）**。复用已有杠杆，且避开从零学 Python；
+  Spring AI 2.0.1 + LangGraph4j 1.9.0 做「知识库 + RAG + Workflow」完全够用，
+  文档解析（Tika）甚至强于 Python。**代价是评估体系要自己写**。
+- **没有 Java 基础 → 选 A（Python）**。学 Java AI 和学 Python AI 投入相当，
+  但 Python 更贴目标 JD，且阶段 7 的评估能直接用 ragas，本地模型生态完整。
+- **确定目标是 Java 岗位 → 必须同时补 Java 后端深度**（Spring Cloud / 微服务 / JVM），
+  只写 LangChain4j 不足以支撑「Java 岗」的面试。
+
+**如果你 Python / Java 都是零基础**，建议先用 C 走完阶段 1–2 建立 RAG 概念
+（切分、召回、重排是通用的，语言只是壳），再决定迁 A 还是 B。
+**不要**为了「看起来对口」硬上陌生语言然后卡在环境上三周。
 
 ### 目标架构
 
@@ -101,11 +115,12 @@ anime-chat (Vue)
 anime-chat-server (NestJS)          ← 鉴权 / 配额 / 会话 / 业务上下文
    │  POST /internal/ai/chat  SSE（内网 + 服务间 token）
    ▼
-anime-ai (FastAPI + LangChain/LangGraph)   ← 检索 / 编排 / 评估
+anime-ai（三选一）
+   ├── A: FastAPI + LangChain/LangGraph          ── BGE-M3 + bge-reranker-v2-m3 + ragas
+   └── B: Spring Boot + Spring AI / LangChain4j   ── bge-small-zh / 远程 embedding + 自研评估
    ├── Qdrant（向量 + 稀疏向量，混合检索）
    ├── MySQL（读 user_anime / group_message；Bangumi 资料缓存）
-   ├── Bangumi API（工具调用 + 语料同步）
-   └── BGE-M3（embedding）/ bge-reranker-v2-m3（重排）
+   └── Bangumi API（工具调用 + 语料同步）
 ```
 
 NestJS 只做「鉴权 + 配额 + 转发 + 把当前用户上下文带给 AI 服务」，
@@ -215,7 +230,7 @@ NestJS 只做「鉴权 + 配额 + 转发 + 把当前用户上下文带给 AI 服
 
 ## 6. 技术栈清单（2026-09-20 核实）
 
-### Python 侧（推荐路线）
+### Python 侧（无 Java 基础时推荐）
 
 ```
 # 服务
@@ -246,6 +261,47 @@ langchain@1.5.11          @langchain/core@1.2.12
 
 **缺口**：`ragas` 无 JS 版 → 评估指标需自研（Hit Rate / MRR 手写不难，Faithfulness 要调 LLM 当裁判）；
 本地 BGE-M3 / reranker 基本只能走 API。
+
+### Java 侧（若已有 Java 后端基础则可行）
+
+```xml
+<!-- 编排：二选一 -->
+org.springframework.ai:spring-ai-bom:2.0.1          <!-- Spring AI GA，含 spring-ai-rag 模块 -->
+dev.langchain4j:langchain4j-bom:1.20.0              <!-- 245 个模块，组件化更细 -->
+org.bsc.langgraph4j:langgraph4j-bom:1.9.0           <!-- Workflow 状态机 -->
+
+<!-- 检索 / 向量库 -->
+dev.langchain4j:langchain4j-qdrant:1.20.0           <!-- 或 spring-ai-starter-vector-store-qdrant -->
+io.qdrant:client:1.19.0                             <!-- 原生客户端 -->
+dev.langchain4j:langchain4j-pgvector:1.20.0
+dev.langchain4j:langchain4j-milvus:1.20.0
+dev.langchain4j:langchain4j-elasticsearch:1.20.0    <!-- 企业里常见，BM25+向量混合 -->
+
+<!-- 本地模型 -->
+dev.langchain4j:langchain4j-embeddings-bge-small-zh-v15-q:1.20.0   <!-- 仅 512 维 -->
+dev.langchain4j:langchain4j-onnx-scoring:1.20.0                    <!-- reranker（需自备 ONNX） -->
+ai.djl:bom:0.38.0                                                  <!-- 要 BGE-M3/Whisper 得自己上 -->
+
+<!-- 文档解析 -->
+org.apache.tika:tika-core:4.0.0                     <!-- 企业知识库场景强项 -->
+
+<!-- Workflow 可用配套（langgraph4j 36 模块节选） -->
+org.bsc.langgraph4j:langgraph4j-mysql-saver:1.9.0   <!-- = LangGraph checkpointer -->
+org.bsc.langgraph4j:langgraph4j-spring-ai:1.9.0
+org.bsc.langgraph4j:langgraph4j-studio-springboot:1.9.0   <!-- 状态图可视化 -->
+org.bsc.langgraph4j:langgraph4j-opentelemetry:1.9.0
+```
+
+**缺口（比 JS 路线更值得注意）**：
+1. **无 RAGAS 对等物** —— 已逐个版本探测确认 `langchain4j-evaluation` 在 Maven Central 不存在
+   （1.20.0/1.0.0/0.35.0/0.31.0 均 404；`langchain4j-core` 里只有 `RetrievalAugmentor`，
+   那是检索管线不是评估）；Spring AI 272 个模块也无 evaluation。
+   → **阶段 7 必须自研**：Hit Rate@k / MRR 好写，Faithfulness / Context Precision 要自己搭
+   LLM-as-judge。这本身是加分项（能讲清指标定义），但工作量比 `pip install ragas` 大得多。
+2. **本地中文 embedding 只有 `bge-small-zh`（512 维）** —— 没有 BGE-M3、没有 bge-large-zh。
+   要 M3 只能：走远程 embedding API（阿里/智谱/SiliconFlow），或用 DJL 自己导 ONNX。
+3. **ASR 自产字幕**：DJL 能跑 Whisper，但工程成本远高于 `faster-whisper`。
+   若走 Java，字幕语料建议改用「播放源自带字幕轨」或直接跳过阶段 5。
 
 ### 基础设施
 
@@ -299,9 +355,16 @@ LangGraph 的 state/channel 设计；写了 RAG 就要能被追问切分、召�
 
 ## 9. 待确认的决策点
 
-1. **Python 还是 LangChain.js？**（§3，决定后面所有工作量分配）
-2. **Python 基础如何？** 零基础则建议先走 JS 路线打通概念，再迁 Python。
-3. **时间预算**：是想 2 周出个能演示的 RAG，还是 2–3 个月做完整体系？
-4. **是否接受多一个运行时**：多一个 FastAPI 服务 + Qdrant 容器的运维成本。
-5. **字幕语料**：是否愿意做 ASR 自产（推荐），还是先用简介/章节/站内记录起步？
-6. **是否开源部署**：涉及语料版权与 API key 成本。
+**最关键的一问：你的目标岗位是哪一类？**
+- 大厂/独角兽的 RAG、知识库、算法应用岗 → Python 基本是硬门槛
+- 传统企业/银行/国企的「AI 应用开发」岗 → Java 完全可行，但通常还要求 Java 后端深度
+- 只想有东西能演示、暂不求职 → TypeScript（LangChain.js），零新运行时
+
+其余：
+1. **Python / Java / TypeScript 三选一**（§3）—— 决定后面所有工作量分配。
+2. **你已有的语言底子**：有 Java 后端经验选 Java，有 Python/无 Java 选 Python，都没有先走 TS。
+3. **时间预算**：2 周出能演示的 RAG，还是 2–3 个月做完整体系？
+4. **是否接受多一个运行时**：多一个 AI 服务 + Qdrant 容器的运维成本。
+5. **评估自研的接受度**：选 Java 就必须自研评估指标（无 ragas 对等物），这块工作量不小但很能讲。
+6. **字幕语料**：是否愿意做 ASR 自产（推荐），还是先用简介/章节/站内记录起步？
+7. **是否开源部署**：涉及语料版权与 API key 成本。
