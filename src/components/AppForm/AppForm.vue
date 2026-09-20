@@ -81,7 +81,7 @@ defineExpose({
 
 <style scoped lang="less">
 :deep(.el-form-item__label) {
-  color: #ffffffa3;
+  color: var(--font-unactive-color);
 }
 .app-form {
   width: 80%;

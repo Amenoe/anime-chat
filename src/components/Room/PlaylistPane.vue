@@ -50,21 +50,20 @@ function switchEpisode(ep: IBangumiEpisode) {
   overflow-y: auto;
   padding: 12px 0;
 
-  scrollbar-width: thin;
-  scrollbar-color: rgba(104, 198, 189, 0.45) rgba(255, 255, 255, 0.04);
-
+  // 不设 scrollbar-width / scrollbar-color：Chromium 下一旦设为非 auto，
+  // 所有 ::-webkit-scrollbar 规则都会被忽略，下面的主题滚动条就失效了
   &::-webkit-scrollbar {
     width: 6px;
   }
   &::-webkit-scrollbar-track {
-    background: rgba(255, 255, 255, 0.04);
+    background: transparent;
   }
   &::-webkit-scrollbar-thumb {
-    background: rgba(104, 198, 189, 0.4);
+    background: var(--scrollbar-thumb);
     border-radius: 6px;
 
     &:hover {
-      background: rgba(104, 198, 189, 0.65);
+      background: var(--scrollbar-thumb-hover);
     }
   }
 
@@ -127,7 +126,7 @@ function switchEpisode(ep: IBangumiEpisode) {
     .active & {
       background: var(--primary-color);
       border-color: var(--primary-color);
-      color: #fff;
+      color: var(--on-primary);
     }
   }
 

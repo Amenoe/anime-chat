@@ -319,6 +319,7 @@ onBeforeUnmount(() => {
 .crop-box {
   position: absolute;
   box-sizing: border-box;
+  // 裁剪画布恒为深色（#1a1a1a），不随主题切换，故选框与手柄固定用浅青
   border: 2px solid #68c6bd;
   box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.55);
   cursor: move;

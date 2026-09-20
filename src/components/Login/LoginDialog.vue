@@ -107,7 +107,7 @@ defineExpose({
   border-radius: var(--df-radius);
   .el-dialog__title {
     font-weight: 700;
-    color: #fff;
+    color: var(--font-color);
   }
 
   // 登录框

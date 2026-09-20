@@ -213,21 +213,20 @@ function copyRoomLink() {
     overflow-y: auto;
     padding: 12px 16px;
 
-    scrollbar-width: thin;
-    scrollbar-color: rgba(104, 198, 189, 0.45) rgba(255, 255, 255, 0.04);
-
+    // 不设 scrollbar-width / scrollbar-color：Chromium 下一旦设为非 auto，
+    // 所有 ::-webkit-scrollbar 规则都会被忽略，下面的主题滚动条就失效了
     &::-webkit-scrollbar {
       width: 6px;
     }
     &::-webkit-scrollbar-track {
-      background: rgba(255, 255, 255, 0.04);
+      background: transparent;
     }
     &::-webkit-scrollbar-thumb {
-      background: rgba(104, 198, 189, 0.4);
+      background: var(--scrollbar-thumb);
       border-radius: 6px;
 
       &:hover {
-        background: rgba(104, 198, 189, 0.65);
+        background: var(--scrollbar-thumb-hover);
       }
     }
   }
@@ -256,7 +255,7 @@ function copyRoomLink() {
 
     :deep(.el-textarea__inner) {
       min-height: 56px !important;
-      background: rgba(34, 36, 51, 0.8);
+      background: var(--surface-overlay);
       box-shadow: 0 0 0 1px rgba(104, 198, 189, 0.22) inset;
       color: var(--font-color);
     }
@@ -318,7 +317,7 @@ function copyRoomLink() {
   max-width: 75%;
   padding: 8px 12px;
   border-radius: 10px;
-  background: rgba(34, 36, 51, 0.8);
+  background: var(--surface-overlay);
   border: 1px solid rgba(104, 198, 189, 0.12);
 
   &__meta {

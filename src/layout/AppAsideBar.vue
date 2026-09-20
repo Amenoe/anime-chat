@@ -96,9 +96,16 @@ const sliderStyle = computed(() => {
     transition: all 0.25s;
 
     &.active {
+      /*
+       * 滑块宽 calc(26px + 16px*2) = 58px，只盖住图标区域；
+       * 文字 p 有 16px margin-left，起点正好落在滑块右边缘之外，
+       * 所以两者底色不同，必须分别取色，不能共用一个颜色。
+       */
       color: var(--font-color);
-      i {
-        color: #fff;
+      // 图标是 Icon 子组件渲染的，父组件 scoped 选择器够不到，必须用 :deep
+      :deep(i) {
+        // 图标压在 primary 滑块上
+        color: var(--on-primary);
       }
     }
   }

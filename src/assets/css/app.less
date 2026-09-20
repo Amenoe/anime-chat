@@ -1,4 +1,14 @@
-:root {
+/*
+ * 主题：暗色（默认）/ 亮色
+ * 由 useTheme 在 <html> 上写 data-theme，取值 dark | light。
+ * 不带 data-theme 时按暗色走，保证 JS 未执行/首屏也不跑偏。
+ * 新增颜色一律加到这里，不要在组件里写死 —— 否则切主题时会漏掉。
+ */
+:root,
+html[data-theme='dark'] {
+  /* 原生控件（滚动条、日期选择、自动填充等）跟随主题 */
+  color-scheme: dark;
+
   /* 项目主题 */
   --bg-color: #1e1d2b;
   --aside-bg-color: #2f3042;
@@ -8,6 +18,21 @@
   --primary-color: rgba(104, 198, 189, 1);
   /* 柔和珊瑚红（退出/删除等，有红感但不刺眼） */
   --warning-color: #e06b6b;
+
+  /* 语义层：暗色下用「白色低透明度」表达浮起/分隔 */
+  --surface-weak: rgba(255, 255, 255, 0.04);
+  --surface-strong: rgba(255, 255, 255, 0.1);
+  --surface-overlay: rgba(34, 36, 51, 0.8);
+  --surface-panel: rgba(47, 48, 66, 0.65);
+  --skeleton-base: rgba(255, 255, 255, 0.04);
+  --skeleton-shine: rgba(255, 255, 255, 0.1);
+  --shadow-color: rgba(0, 0, 0, 0.4);
+
+  /* 滚动条滑块：主题青绿，明确可见（hover 满色） */
+  --scrollbar-thumb: rgba(104, 198, 189, 0.75);
+  --scrollbar-thumb-hover: rgba(104, 198, 189, 1);
+  /* 选中文字前景：暗色主色偏亮，需配深色字 */
+  --on-primary: #1e1d2b;
 
   /*
    * Element Plus 全局主题（CSS 变量，见官方 theming）
@@ -45,6 +70,67 @@
   --el-font-size-base: 14px;
 }
 
+/*
+ * 亮色：结构关系与暗色一致（aside 最亮 = 最浮起），整体提亮反转。
+ * 主色换成更深的青绿 —— 亮底上 #68c6bd 作文字对比度只有约 2:1，读不清。
+ */
+html[data-theme='light'] {
+  color-scheme: light;
+
+  --bg-color: #e8ecf3;
+  --aside-bg-color: #ffffff;
+  --box-bg-color: #f4f6fa;
+  --font-color: #1f2430;
+  --font-unactive-color: rgba(31, 36, 48, 0.6);
+  --primary-color: #1a7f75;
+  --warning-color: #d9534f;
+
+  /* 亮色下改用「黑色低透明度」表达同样的层次 */
+  --surface-weak: rgba(31, 36, 48, 0.04);
+  --surface-strong: rgba(31, 36, 48, 0.08);
+  --surface-overlay: rgba(255, 255, 255, 0.85);
+  --surface-panel: rgba(255, 255, 255, 0.7);
+  --skeleton-base: rgba(31, 36, 48, 0.06);
+  --skeleton-shine: rgba(31, 36, 48, 0.12);
+  --shadow-color: rgba(31, 36, 48, 0.18);
+
+  --scrollbar-thumb: rgba(26, 127, 117, 0.55);
+  --scrollbar-thumb-hover: rgba(26, 127, 117, 0.85);
+  /* 亮色主色偏深，配白字 */
+  --on-primary: #ffffff;
+
+  --el-color-primary: #1a7f75;
+  --el-color-primary-light-3: #5fa59e;
+  --el-color-primary-light-5: #8dbfba;
+  --el-color-primary-light-7: #bad9d6;
+  --el-color-primary-light-8: #d1e5e3;
+  --el-color-primary-light-9: #e8f2f1;
+  --el-color-primary-dark-2: #15665e;
+
+  --el-color-danger: #d9534f;
+  --el-color-danger-light-3: #e37b78;
+  --el-color-danger-light-5: #eca29f;
+  --el-color-danger-light-7: #f4c9c7;
+  --el-color-danger-light-8: #f8dcdb;
+  --el-color-danger-light-9: #fbeceb;
+  --el-color-danger-dark-2: #ae423f;
+
+  --el-bg-color: var(--bg-color);
+  --el-bg-color-overlay: var(--aside-bg-color);
+  --el-text-color-primary: var(--font-color);
+  --el-text-color-regular: var(--font-color);
+  --el-text-color-secondary: var(--font-unactive-color);
+  --el-text-color-placeholder: var(--font-unactive-color);
+  --el-border-color: rgba(26, 127, 117, 0.28);
+  --el-border-color-light: rgba(26, 127, 117, 0.2);
+  --el-border-color-lighter: rgba(26, 127, 117, 0.14);
+  --el-fill-color-blank: var(--aside-bg-color);
+  --el-fill-color-light: rgba(26, 127, 117, 0.08);
+  --el-mask-color: rgba(31, 36, 48, 0.4);
+  --el-border-radius-base: 10px;
+  --el-font-size-base: 14px;
+}
+
 body {
   --df-radius: 24px;
 }
@@ -59,9 +145,14 @@ body {
     object-fit: cover;
   }
 
-  // 骨架屏
+  // 骨架屏（底色/高光随主题）
   .aw-skeleton {
-    background: linear-gradient(90deg, #def 25%, #fff 37%, #def 63%);
+    background: linear-gradient(
+      90deg,
+      var(--skeleton-base) 25%,
+      var(--skeleton-shine) 37%,
+      var(--skeleton-base) 63%
+    );
     background-size: 400% 100%;
     animation: el-skeleton-loading 1.4s ease infinite;
     color: rgb(0 0 0 / 0);
@@ -152,7 +243,7 @@ body {
 
 .el-input__inner::selection {
   background-color: var(--primary-color) !important;
-  color: #fff !important;
+  color: var(--on-primary) !important;
 }
 
 .el-input__prefix,

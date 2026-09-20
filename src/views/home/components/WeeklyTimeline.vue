@@ -136,7 +136,7 @@ const goDetail = (id: number) => {
   &__today-badge {
     font-size: 10px;
     background: var(--primary-color);
-    color: #fff;
+    color: var(--on-primary);
     padding: 1px 6px;
     border-radius: 8px;
     font-weight: 600;

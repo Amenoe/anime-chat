@@ -383,9 +383,9 @@ const animeClick = (id: number) => {
   aspect-ratio: 3 / 4;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.04) 25%,
-    rgba(255, 255, 255, 0.1) 37%,
-    rgba(255, 255, 255, 0.04) 63%
+    var(--skeleton-base) 25%,
+    var(--skeleton-shine) 37%,
+    var(--skeleton-base) 63%
   );
   background-size: 400% 100%;
   animation: skeleton-shine 1.4s ease infinite;
@@ -397,9 +397,9 @@ const animeClick = (id: number) => {
   border-radius: 4px;
   background: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.04) 25%,
-    rgba(255, 255, 255, 0.1) 37%,
-    rgba(255, 255, 255, 0.04) 63%
+    var(--skeleton-base) 25%,
+    var(--skeleton-shine) 37%,
+    var(--skeleton-base) 63%
   );
   background-size: 400% 100%;
   animation: skeleton-shine 1.4s ease infinite;

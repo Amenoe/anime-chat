@@ -194,7 +194,7 @@ onBeforeUnmount(() => {
 
   &__avatar {
     flex-shrink: 0;
-    background: #1e1d2b;
+    background: var(--bg-color);
   }
 
   &__main {

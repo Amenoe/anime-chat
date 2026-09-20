@@ -8,6 +8,21 @@
     />
     <link rel="icon" href="/favicon.ico" />
     <meta name="referrer" content="no-referrer" />
+    <script>
+      // 首屏前置应用主题，避免「暗 → 亮」闪烁。
+      // 存储由 src/utils/cache 写入（JSON 字符串），键名与 useTheme.ts 保持一致。
+      ;(function () {
+        try {
+          var raw = localStorage.getItem('theme-mode')
+          var mode = raw ? JSON.parse(raw) : null
+          if (mode === 'light' || mode === 'dark') {
+            document.documentElement.setAttribute('data-theme', mode)
+          }
+        } catch (e) {
+          /* 隐私模式下 localStorage 不可用，走默认暗色 */
+        }
+      })()
+    </script>
     <title>AnimeChat</title>
   </head>
 

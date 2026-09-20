@@ -66,7 +66,9 @@ function createPlayer(url: string) {
     setting: !readonly,
     playbackRate: !readonly,
     aspectRatio: !readonly,
-    theme: '#68c6bd',
+    // Artplayer 内部把 theme 写进元素行内样式变量 --art-theme（setProperty），
+    // 因此这里传 var() 可由浏览器解析并跟随主题切换，避免写死主题色。
+    theme: 'var(--primary-color)',
     lang: 'zh-cn',
     moreVideoAttr: {
       crossOrigin: 'anonymous',

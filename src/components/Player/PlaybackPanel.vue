@@ -437,7 +437,7 @@ onBeforeUnmount(() => {
     font-weight: 600;
     cursor: pointer;
     background: @accent;
-    color: #fff;
+    color: var(--on-primary);
     transition: box-shadow 0.2s, opacity 0.2s, filter 0.2s;
 
     &:hover:not(:disabled) {
@@ -529,7 +529,7 @@ onBeforeUnmount(() => {
 
   &__avatar {
     flex-shrink: 0;
-    background: #1e1d2b;
+    background: var(--bg-color);
   }
 
   &__main {

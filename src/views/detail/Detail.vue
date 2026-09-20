@@ -610,7 +610,7 @@ async function onCollectCommand(cmd: string) {
 
   &--primary {
     background: @accent;
-    color: #fff;
+    color: var(--on-primary);
 
     &:hover {
       transform: translateY(-2px);
@@ -693,7 +693,7 @@ async function onCollectCommand(cmd: string) {
   }
 
   .el-dropdown-menu__item {
-    color: #fff;
+    color: var(--font-color);
     background-color: transparent;
 
     &:hover,

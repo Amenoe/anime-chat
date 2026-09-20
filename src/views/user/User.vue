@@ -265,6 +265,10 @@ const MAX_AVATAR_SIZE = 5 * 1024 * 1024
 const loginStore = useLoginStore()
 const userAnimeStore = useUserAnimeStore()
 const router = useRouter()
+const route = useRoute()
+
+/** 允许通过 ?tab= 直达的分区（与右上角头像下拉菜单一一对应） */
+const TAB_NAMES = ['userinfo', 'update', 'collection', 'sources']
 
 const sources = ref<MediaSourceItem[]>([])
 const sourceLoading = ref(false)
@@ -701,7 +705,8 @@ function onSiteDrop(to: number) {
   persistPrefs()
 }
 
-function onTabChange(name: string | number) {
+/** 按分区懒加载数据：切 Tab 与「直接带 ?tab= 进入」共用同一份逻辑 */
+function ensureTabData(name: string) {
   if (name === 'collection') {
     loadCollection()
   }
@@ -712,6 +717,27 @@ function onTabChange(name: string | number) {
     formData.value.nickname = userInfo.value.nickname
   }
 }
+
+function onTabChange(name: string | number) {
+  ensureTabData(String(name))
+}
+
+// 支持 /user?tab=collection 直达（右上角头像下拉菜单用）
+onMounted(() => {
+  const tab = String(route.query.tab || '')
+  if (TAB_NAMES.includes(tab) && tab !== activeName.value) {
+    // 赋值会触发 el-tabs 的 tab-change，由 onTabChange 去加载
+    activeName.value = tab
+    return
+  }
+  ensureTabData(activeName.value)
+})
+
+// 让 URL 跟随 Tab，刷新/分享后仍停在同一个分区
+watch(activeName, (name) => {
+  if (String(route.query.tab || '') === name) return
+  void router.replace({ path: '/user', query: { tab: name } })
+})
 
 function goDetail(id: number) {
   router.push(`/detail/${id}`)

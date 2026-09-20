@@ -105,7 +105,7 @@ const animeClick = (id: number) => {
 
   &__score {
     background: var(--primary-color);
-    color: #fff;
+    color: var(--on-primary);
     font-size: 12px;
     font-weight: 700;
     padding: 2px 6px;
