@@ -108,7 +108,7 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 4 | P1 | 下线旧纯聊天：`/chat` 路由与页面/store 移除 | ✅ 2026-08-17 | ChatMessage 类型迁至 stores/types.ts；后端 addGroup 保留兼容并标 deprecated |
 | 5 | P1 | 文档同步：`docs/schema.sql` 补全新表；README 更新；CLAUDE.md 模块清单补放映室/播放/媒体源 | ✅ 2026-08-16 | schema 已含 group/playback/media_source 等全部表 |
 | 6 | P2 | 前端 chunk 拆分 | ✅ 2026-08-17 | Element Plus 按需引入 + artplayer/hls.js 独立分包；index 1.2MB → 525KB（gzip 408→176KB） |
-| 7 | P2 | `/timeline` 改为 AI 相关页面 | ⬜ | 用户决定后续做 AI 功能时再实现，当前保持占位 |
+| 7 | P2 | `/timeline` 改为 AI 相关页面 | 🔄 2026-09-20 | 分支 `feat/ai-assistant`。路由占位已完成：侧边栏「时间表」→「AI 助手」(`/ai`)，`/timeline` 重定向兼容；技术栈方案见 `ai-chat-tech-stack.md`。AI 后端（`AiModule`）未开始 |
 | 8 | P2 | heartbeat 广播节流 | ✅ 2026-08-17 | 1s 内不重复广播 playback:state；非心跳控制即时广播 |
 | 9 | P2 | 首页「最近播放」 | ✅ 2026-08-17 | localStorage 记录；首页顶部横滑卡片，无记录隐藏；埋点：详情页点集/选源、放映室开播换源切集 |
 | 9 | P1 | 放映室离开二次确认 + 侧边栏改 a 标签 | ✅ 2026-08-17 | 头像/侧边栏导航弹确认；a 标签支持中键/Cmd 新开 |
@@ -271,8 +271,9 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
   可独立提交推送。此前它不属于任何仓库、无法随代码提交，是文档漂移的根因。
 - **待用户确认**：前端 `.env.production` 的 `VITE_BASE_URL` 由 `/pro/` 改为 `/` 仍未提交
   （提交流水线排除 `.env*`），部署路径变更需确认后再处理。
-- `/timeline` 预留给 AI 相关页面（用户决定后续实现，当前保持占位）。工作区名叫 AI_Teams，
-  但目前**没有任何 AI 功能**。
+- AI 相关页面已从「占位」转为**在建**：侧边栏「时间表」已改为「AI 助手」(`/ai`，分支 `feat/ai-assistant`)，
+  功能定位为「推荐番剧 / 寻找番剧」对话助手，技术栈见 `ai-chat-tech-stack.md`。
+  当前前端只有占位页，**后端 AI 能力尚未实现**（无 `AiModule`、无模型调用）。
 - 计划/规格旧文档（superpowers 时代）已删除；`api-auth-collection.md` 已重写为 `api-contract.md`。
   设计决策以上文 §2 与 `COGNITION_SYNC.md` 为准。
 - 两仓均**没有可运行的测试**（后端 jest 已配置但 0 个 spec），验收全靠手动；见 `COGNITION_SYNC.md` §8。
