@@ -15,10 +15,10 @@ export const useRouteStore = defineStore('route', () => {
       icon: 'Search',
     },
     {
-      name: '时间表',
-      routeName: 'Timeline',
-      routePath: 'timeline',
-      icon: 'AlarmClock',
+      name: 'AI 助手',
+      routeName: 'Ai',
+      routePath: 'ai',
+      icon: 'MagicStick',
     },
     {
       name: '个人中心',
