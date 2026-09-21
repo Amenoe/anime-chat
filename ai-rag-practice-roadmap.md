@@ -225,10 +225,10 @@ RAG 里同样关键，且 M2 可以做成实验：
 
 | 方案 | 维度 | 官方价格 | 出处 |
 | --- | --- | --- | --- |
-| 阿里 `text-embedding-v3` | 1024（可调） | **¥0.5 / 百万 tokens**（Batch 文件 ¥0.25） | [阿里云百炼文档](https://help.aliyun.com/zh/model-studio/text-embedding-v3) |
-| 智谱 `embedding-3` | 256–2048（可自定义） | **¥0.5 / 百万 tokens** | [智谱文档](https://docs.bigmodel.cn/cn/guide/models/embedding/embedding-3) |
-| SiliconFlow BGE-M3 | 1024 | 低价/有免费额度，以控制台为准 | [硅基流动](https://siliconflow.cn/pricing) |
-| **本地 `bge-small-zh-v1.5-q`** | 512 | **¥0**（模型文件实测 **24 MB**，打包在 jar 内） | 实测 `langchain4j-embeddings-bge-small-zh-v15-q` |
+| **SiliconFlow BGE-M3（已选定）** | 1024 | 低价/有免费额度，以控制台为准 | [硅基流动](https://siliconflow.cn/pricing) |
+| 阿里 `text-embedding-v3` | 1024（可调） | ¥0.5 / 百万 tokens（Batch 文件 ¥0.25） | [阿里云百炼文档](https://help.aliyun.com/zh/model-studio/text-embedding-v3) |
+| 智谱 `embedding-3` | 256–2048（可自定义） | ¥0.5 / 百万 tokens | [智谱文档](https://docs.bigmodel.cn/cn/guide/models/embedding/embedding-3) |
+| ~~本地 `bge-small-zh-v1.5-q`~~ | 512 | ¥0（模型文件 24 MB） | **不采用**（2026-09-20 决定） |
 
 **成本实算：结论是「便宜到不该成为决策因素」**
 
@@ -260,10 +260,13 @@ RAG 里同样关键，且 M2 可以做成实验：
 > 可以直接复用同一模型；但**能否拿到稀疏输出取决于供应商是否暴露**——
 > OpenAI 兼容接口通常只返回 dense 向量。所以别把这条当既定收益，M4 实测后再说。
 
-**建议**：M2 **主选远程 BGE-M3**（质量明显更高、花费可忽略），
-同时把**本地 512 维跑通** —— 它同时是①断网/限流时的降级方案 ②M3 的第一个免费消融实验
-（本地 512 vs 远程 1024：差多少分、省多少钱）。两者用同一个 `EmbeddingStore` 接口，
-LangChain4j 里切换只是换个 `EmbeddingModel` bean。
+**已定（2026-09-20）**：M2 **只用远程 SiliconFlow BGE-M3（1024 维），不做本地降级**。
+
+理由：本地降级省下的钱只有几毛（见上表），却要多引入一套 ONNX 运行时与一个对照实验；
+既然成本可忽略，就直接用质量明显更高的模型，把精力留给检索与评估本身。
+代价是**断网或限流时无兜底**——接受，M2 是本地开发阶段。
+
+用同一个 `EmbeddingStore` 接口抽象，日后若要换回本地方案，只是换个 `EmbeddingModel` bean。
 
 
 #### ③ Qdrant 集合设计
@@ -647,16 +650,18 @@ LangGraph 的 state/channel 设计；写了 RAG 就要能被追问切分、召�
 | 4 | AI 框架 | **LangChain4j 1.20.0**（概念与 Python LangChain 1:1，迁移最省力；含本地 embedding 与 ONNX 重排） |
 | 5 | 评估缺口对策 | **Python 旁路脚本**，不把服务改成 Python（§3.5） |
 | 6 | M2 范围 | **已定稿**（§3.6）：不做 chunking、1 条番剧 = 1 向量点、检索与生成拆两个接口 |
+| 7 | Embedding | **只用远程 SiliconFlow BGE-M3（1024 维）**，不做本地降级 |
+| 8 | 仓库布局 | 新建 `anime-ai`，与 `anime-chat` / `anime-chat-server` **同级、独立 git 仓**；跨仓文档仍统一放 `docs/` |
+| 9 | 分支策略 | `anime-ai` 从 main 切 `feat/m1-*`，**M1 开发完成后**再 `--no-ff` 合回 main |
 
 > 若日后明确要投互联网 AI 岗，需重新评估是否迁 Python —— 届时迁移的是库 API，
 > 不是 RAG 概念，成本可控。§3 的三方对比仍然有效。
 
 ### 仍待确认
 
-1. **Embedding 供应商**：M2 主选 SiliconFlow BGE-M3（1024 维，OpenAI 兼容），
-   需确认是否接受引入第二家 API key（**DeepSeek 没有 embedding 接口**）。
-2. **时间预算**：2 周出 M1+M2，还是 2–3 个月做到 M6？
-3. **字幕语料**：Java 侧 ASR 成本高（DJL 手搓）→ 建议 M5 之后再考虑，或改用播放源自带字幕轨。
-4. **是否开源部署**：涉及语料版权与 API key 成本。
-5. **NestJS 侧 Session 归属**：会话历史存 MySQL（`ai_conversation`/`ai_message`）还是先放前端 localStorage。
+1. **时间预算**：2 周出 M1+M2，还是 2–3 个月做到 M6？
+2. **字幕语料**：Java 侧 ASR 成本高（DJL 手搓）→ 建议 M5 之后再考虑，或改用播放源自带字幕轨。
+3. **是否开源部署**：涉及语料版权与 API key 成本。
+4. **NestJS 侧 Session 归属**：会话历史存 MySQL（`ai_conversation`/`ai_message`）还是先放前端 localStorage。
+5. **SiliconFlow embedding 模型名**：需在控制台确认确切的 model id（BGE-M3 在该平台的调用名）。
 
