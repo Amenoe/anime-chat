@@ -21,9 +21,21 @@
           <span class="ai-msg__thinking-text">正在思考…</span>
         </div>
 
+        <!--
+          卡片默认只展示前几张：模型一次可能请求 20 条候选（它需要足够多的候选才能按标签筛），
+          全铺出来会变成一堵卡片墙，把文字回答挤出视口 —— 实测踩到。
+          超出的折起来，需要时再展开。
+        -->
         <div v-if="message.tool_results?.length" class="ai-msg__cards">
-          <AiAnimeCard v-for="card in message.tool_results" :key="card.id" :card="card" />
+          <AiAnimeCard v-for="card in visibleCards" :key="card.id" :card="card" />
         </div>
+        <button
+          v-if="hiddenCount > 0 || expanded"
+          class="ai-msg__more"
+          @click="expanded = !expanded"
+        >
+          {{ expanded ? '收起' : `还有 ${hiddenCount} 部，展开看看` }}
+        </button>
 
         <span v-if="message.pending && message.content" class="ai-msg__caret" />
       </template>
@@ -44,6 +56,18 @@ const props = defineProps({
     required: true,
   },
 })
+
+/** 折叠时最多展示几张卡片 */
+const COLLAPSED_LIMIT = 6
+const expanded = ref(false)
+const visibleCards = computed(() =>
+  expanded.value
+    ? props.message.tool_results ?? []
+    : (props.message.tool_results ?? []).slice(0, COLLAPSED_LIMIT),
+)
+const hiddenCount = computed(() =>
+  Math.max(0, (props.message.tool_results?.length ?? 0) - COLLAPSED_LIMIT),
+)
 
 /** 流式过程中每来一个增量都会重算；markdown-it 很快，这里不做节流 */
 const renderedContent = computed(() =>
@@ -158,6 +182,22 @@ const renderedContent = computed(() =>
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+
+  &__more {
+    align-self: flex-start;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    color: var(--primary-color);
+    background: transparent;
+    border: 1px dashed rgba(104, 198, 189, 0.5);
+    cursor: pointer;
+    transition: background 0.2s;
+
+    &:hover {
+      background: rgba(104, 198, 189, 0.12);
+    }
   }
 
   &__thinking {
