@@ -21,8 +21,23 @@
 | 多跳/Workflow | 单轮工具调用即可 | **必须做**状态机，否则没有 workflow 可讲 |
 | 评估 | 能跑就行 | **必须有指标**，否则无法证明优化有效 |
 
-两者不冲突，可以共存：**结构化过滤解决「找番」，RAG 解决「找番之外的问题」**。
+两者不冲突，可以共存：**结构化查询解决「已知作品名/榜单浏览」，RAG 解决「按题材语义发现」**。
 下面第 2 节会把这条界线划清楚——这是整份文档最关键的部分。
+
+> ### ⚠️ 2026-09-21 实测更正（M1 落地时发现）
+>
+> 上表原先写的是「结构化过滤解决找番」，**这个前提是错的**。
+> 打真实接口验证后确认：`POST /v0/search/subjects` 的 `keyword` 是**标题字面匹配**，
+> `tag`/`meta_tags` 只能在标题命中集内收窄、无法用于发现。实测：
+> `keyword=科幻` 仅命中 4 部标题含「科幻」的条目；`keyword=动画 + tag=[科幻]`
+> 的 top 结果里混着「憨豆先生动画版」。
+>
+> 所以真正成立的分工是：
+> - **榜单浏览**（`GET /v0/subjects?sort=rank[&year][&month]`，实测质量很高）→ 解决「推荐高分番」；
+> - **标题检索**（`POST /v0/search/subjects`）→ 解决「我知道名字，帮我找」；
+> - **按题材/标签语义发现**（「科幻 + 治愈 + 日常」）→ **API 做不到，这正是 M2 向量检索要补的洞**。
+>
+> 这条更正是**利好**：它把「上向量库」从一个为了练技术的选择，变成了有真实缺口支撑的选择。
 
 ---
 
@@ -181,7 +196,7 @@ golden set (JSON: 问题 + 期望 subject_id)
 
 | # | 交付 | 技术 | 验收 |
 | --- | --- | --- | --- |
-| **M1** | 链路打通（不含 RAG） | Boot 4.0.5 + LangChain4j；`POST /internal/ai/chat` SSE；一个 `search_anime` 工具；NestJS 转发 + 配额；前端手写 SSE 消费 | 前端能流式显示回答，工具调用返回番剧卡片 |
+| **M1** | 链路打通（不含 RAG） | Boot **4.0.8** + LangChain4j 1.20.0；`POST /internal/ai/chat` SSE；**两个**工具 `browse_anime` + `search_anime`；NestJS 转发 + 配额；前端手写 SSE 消费 | `anime-ai` 侧 ✅ 已完成并验证（见下）；NestJS 与前端待做 |
 | **M2** | 最简 RAG | Qdrant 容器；批量导番剧语料；`search_knowledge` 工具 | 「想不起名字，主角是红发剑士」能召回候选 |
 | **M3** | 评估旁路 | golden set 80 条 + Python ragas 脚本 | 产出第一份 Hit Rate@k 基线数字 |
 | **M4** | 混合检索 + rerank | BM25（Lucene/Tika）+ 向量 + RRF 融合；`onnx-scoring` 或远程 rerank | 对比 M3 基线，指标提升且报告里有延迟代价 |
@@ -190,6 +205,30 @@ golden set (JSON: 问题 + 期望 subject_id)
 
 > 建议先做 **M1 → M2 → M3**：到 M3 就有「能演示 + 有数字」的最小闭环，
 > 比先把所有功能做完再想评估要好得多。
+
+#### M1 进展记录（2026-09-21）
+
+**已完成**：`anime-ai` 仓库（与两仓同级、独立 git 仓），分支 `feat/m1-sse-pipeline`，commit `2e4cc3b`。
+
+| 项 | 结果 |
+| --- | --- |
+| 工程 | Spring Boot **4.0.8** + Java 21 + LangChain4j 1.20.0（单 BOM 管住 GA/beta 两套版本） |
+| SSE | `POST /internal/ai/chat` 实测通过：`Content-Type: text/event-stream`，事件格式符合 §4.5 协议 |
+| 链路 | 占位 key 下**真实打到 DeepSeek** 并收到 API 响应，错误被正确转成 `error` 事件并正常收尾（未挂死） |
+| 鉴权 | `X-Internal-Token` 在 `/chat` 与 `/ping` 均生效（无/错令牌 401） |
+| 工具 | `browse_anime` + `search_anime`，4 个**打真实 Bangumi 接口**的测试全绿 |
+| 启动 | 0.7s |
+
+**实测中修掉的 4 个真问题**（都已写进 `anime-ai/CLAUDE.md`）：
+
+1. **Boot 4 默认 Jackson 3，LangChain4j 用 Jackson 2**。Boot 4 不再自动配置
+   `com.fasterxml.jackson.databind.ObjectMapper` bean → 注入它直接**启动失败**。
+   对策：自有序列化统一走 `support/Json.MAPPER`（Jackson 2），避免注解由谁解释的隐式行为。
+2. **Bangumi `rating.count` 是对象**（分数分布）不是整数 → 反序列化报错。
+3. **Bangumi `name_cn` 可能是空字符串** → 前端会渲染空白标题，需兜底到 `name`。
+4. **`/ping` 漏了令牌校验**（只给 `/chat` 加了）→ 配了令牌后探测接口仍匿名可用。
+
+**待做（M1 剩余）**：NestJS 转发 + 配额、前端 SSE 消费 + `Ai.vue` 真实对话界面。
 
 ### 3.6 M2 详细设计：最简 RAG（开工前定稿）
 
@@ -294,12 +333,18 @@ collection: anime_knowledge
 
 | 步骤 | 做法 |
 | --- | --- |
-| 数据源 | ① 本地 MySQL `anime` 表（已有 `description`，先看条数与质量）② Bangumi `/v0/subjects?type=2&sort=rank` 分页补拉 |
+| 数据源 | ① 本地 MySQL `anime` 表（已有 `description`，先看条数与质量）② Bangumi `GET /v0/subjects?type=2&sort=rank` 分页补拉 |
 | M2 规模 | **先 3000 条**（足够做检索实验；embedding 成本约几毛钱，跑得也快） |
 | 限流 | Bangumi 需 `User-Agent`，**串行 + 1 req/s**，别并发打 |
 | 读取方式 | M2 让 Java 只读直连 MySQL（少一跳）；M5 再考虑收敛成 NestJS 内部接口 |
 | 幂等 | `content_hash = md5(拼接文本)`；Qdrant 用 `subject_id` 做 point id，hash 未变则跳过 |
 | 增量 | 重跑只 embed 变化的条目；删除的条目要显式清理 |
+
+> ⚠️ **语料必须用「浏览接口」分页拉，不要用「搜索接口 + tag」。**
+> M1 实测确认搜索接口的 `keyword` 是标题字面匹配（§2 更正框），
+> `POST /v0/search/subjects` 拿不到「所有科幻番」这类集合，
+> 用它建语料会让索引严重偏斜。`GET /v0/subjects` 支持 `offset` 翻页（总榜约 8947 条），
+> 按 `sort=rank` 或 `sort=date` 分片遍历即可。
 
 #### ⑤ 检索接口设计 ← **M2 最关键的一条**
 
@@ -653,6 +698,8 @@ LangGraph 的 state/channel 设计；写了 RAG 就要能被追问切分、召�
 | 7 | Embedding | **只用远程 SiliconFlow BGE-M3（1024 维）**，不做本地降级 |
 | 8 | 仓库布局 | 新建 `anime-ai`，与 `anime-chat` / `anime-chat-server` **同级、独立 git 仓**；跨仓文档仍统一放 `docs/` |
 | 9 | 分支策略 | `anime-ai` 从 main 切 `feat/m1-*`，**M1 开发完成后**再 `--no-ff` 合回 main |
+| 10 | M1（anime-ai 侧） | ✅ 2026-09-21 完成并验证（§3.5 进展记录）；NestJS 转发与前端待做 |
+| 11 | 工具拆分 | 由实测决定：`browse_anime`（榜单，推荐主力）+ `search_anime`（标题查找）；Boot 用 **4.0.8** 而非 4.0.5 |
 
 > 若日后明确要投互联网 AI 岗，需重新评估是否迁 Python —— 届时迁移的是库 API，
 > 不是 RAG 概念，成本可控。§3 的三方对比仍然有效。
