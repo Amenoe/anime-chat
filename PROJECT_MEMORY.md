@@ -27,7 +27,7 @@
 | **AI 服务** | **`anime-ai`** — Spring Boot 4.0.8 + Java 21 + LangChain4j 1.20.0（2026-09-21 新增）。只做检索与模型编排，不碰业务数据；监听 8013 |
 | 定位 | 动漫讨论平台 +「放映室」一起看：左播放右聊天、房主强同步、按随机 `season_id` 多厅；AI 助手提供推荐/寻找番剧 |
 | 语言 | 注释、commit、UI 均为中文 |
-| 仓库 | github.com/Amenoe/anime-chat · github.com/Amenoe/anime-chat-server（各自独立 git，分开提交）；`anime-ai` 为本地第三个代码仓（暂无远端）；本 `docs/` 为独立文档仓（暂无远端） |
+| 仓库 | github.com/Amenoe/anime-chat · github.com/Amenoe/anime-chat-server（各自独立 git，分开提交）；`anime-ai`（github.com/Amenoe/anime-ai）；本 `docs/` 为独立文档仓（**暂无远端**） |
 
 ### 命令速查
 
@@ -123,7 +123,7 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 12 | P2 | PlayerPane 拆分重构 | ✅ 2026-08-18 | 1209 行 → 375 行；拆出 useSourceSearch / SourceDrawer / source-quality；已提交推送 |
 | 13 | P1 | JWT 双 token + 前端静默刷新 | ✅ 2026-09-15 | accessToken 2h / refreshToken 30d 落库轮换吊销；前端 401 单次重试 + 并发合并；真实接口验收 24/24 |
 | 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端 `CLAUDE.md`；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
-| 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | ✅ 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试）；**NestJS 网关**✅（`3858179`）；**前端对话界面**✅（`aa65f50`，分支 `feat/ai-chat-ui` 未合并）。浏览器实测 11/11：流式渲染、Markdown、卡片、点按跳详情、刷新恢复；**用户头像同步 + 卡片与推荐对齐 + 埋点体系**✅ 2026-09-21 |
+| 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | ✅ 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试）；**NestJS 网关**✅（`3858179`）；**前端对话界面**✅（`aa65f50`，分支 `feat/ai-chat-ui` 未合并）。浏览器实测 11/11：流式渲染、Markdown、卡片、点按跳详情、刷新恢复；**用户头像同步 + 卡片与推荐对齐 + 埋点体系**✅ 2026-09-21（已合入 main 并推送） |
 | 17 | P2 | 管理员数据看板（展示埋点与 AI 用量） | ⬜ | **数据通道已就绪**：`/api/track/stats/*`、`/api/ai/stats/*`（仅 root）。缺前端页面 |
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
 
@@ -363,8 +363,8 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
   实测覆盖：真实调用 DeepSeek、4 个打真实 Bangumi 接口的测试、配额 429、上游不可达 503、
   越权读写他人会话 404、多轮续聊。侧边栏「时间表」已改为「AI 助手」(`/ai`) 并入 `anime-chat` main。
   前端 `/ai` 也已从占位页换成真实对话界面（手写 SSE 消费，非 axios）。
-  **待合并分支**：`anime-chat` 的 `feat/ai-chat-ui`、`anime-chat-server` 的 `feat/ai-gateway`、
-  `anime-ai` 的 `feat/stateless-history`。
+  **三仓均已合入 main 并推送**（2026-09-21）：`anime-chat` `efb902e`、`anime-chat-server` `74486a3`、
+  `anime-ai` `711ed5a`，功能分支已删除。
 - ⚠️ **一条被实测推翻的早期假设**：曾认为「Bangumi 的结构化过滤足以覆盖找番需求，故 MVP 不需向量库」。
   M1 打真实接口后确认 `POST /v0/search/subjects` 的 `keyword` 是**标题字面匹配**，
   `tag`/`meta_tags` 只能收窄、无法用于发现，「按题材找番」在该接口上走不通。
