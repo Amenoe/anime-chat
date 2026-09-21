@@ -4,13 +4,16 @@
     <aside class="ai-aside" :class="{ 'ai-aside--open': asideOpen }">
       <div class="ai-aside__head">
         <span class="ai-aside__title">对话</span>
-        <el-button size="small" :icon="Plus" text @click="onNew">新对话</el-button>
+        <el-button v-track="'ai.conversation.new'" size="small" :icon="Plus" text @click="onNew">
+          新对话
+        </el-button>
       </div>
 
       <div v-loading="store.conversationsLoading" class="ai-aside__list">
         <div
           v-for="item in store.conversations"
           :key="item.id"
+          v-track="{ event: 'ai.conversation.open', props: { title: item.title } }"
           class="ai-aside__item"
           :class="{ active: item.id === store.activeId }"
           @click="onOpen(item.id)"
@@ -50,14 +53,25 @@
 
       <div ref="scrollRef" v-loading="store.historyLoading" class="ai-main__scroll">
         <!-- 空态：给出可点的示例，降低第一次使用门槛 -->
-        <div v-if="!store.messages.length && !store.historyLoading" class="ai-welcome">
+        <!-- `.view` = 曝光埋点：欢迎区进入视口时上报，用于衡量「有多少人真正打开了对话页」 -->
+        <div
+          v-if="!store.messages.length && !store.historyLoading"
+          v-track.view="'ai.welcome.view'"
+          class="ai-welcome"
+        >
           <el-icon class="ai-welcome__icon"><MagicStick /></el-icon>
           <h2 class="ai-welcome__title">番剧助手</h2>
           <p class="ai-welcome__desc">
             我可以帮你找番、推荐番。推荐结果里的卡片都来自 Bangumi 实时检索，点击可进详情页。
           </p>
           <div class="ai-welcome__chips">
-            <button v-for="s in suggestions" :key="s" class="ai-chip" @click="onSuggest(s)">
+            <button
+              v-for="s in suggestions"
+              :key="s"
+              v-track="{ event: 'ai.suggest.click', props: { text: s } }"
+              class="ai-chip"
+              @click="onSuggest(s)"
+            >
               {{ s }}
             </button>
           </div>
@@ -79,11 +93,17 @@
           @keydown.enter="onEnter"
         />
         <div class="ai-main__actions">
-          <el-button v-if="store.streaming" :icon="VideoPause" @click="store.stop()">
+          <el-button
+            v-if="store.streaming"
+            v-track="'ai.stop'"
+            :icon="VideoPause"
+            @click="store.stop()"
+          >
             停止生成
           </el-button>
           <el-button
             v-else
+            v-track="'ai.send.click'"
             type="primary"
             :icon="Promotion"
             :disabled="!draft.trim()"

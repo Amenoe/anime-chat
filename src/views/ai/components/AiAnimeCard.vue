@@ -1,5 +1,9 @@
 <template>
-  <div class="ai-anime-card" @click="goDetail">
+  <div
+    v-track="{ event: 'ai.card.click', props: { id: card.id, name: displayName } }"
+    class="ai-anime-card"
+    @click="goDetail"
+  >
     <div class="ai-anime-card__cover">
       <img
         v-if="card.cover && !coverFailed"

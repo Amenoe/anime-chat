@@ -1,10 +1,9 @@
 <template>
   <div class="ai-msg" :class="[`ai-msg--${message.role}`, { 'ai-msg--failed': message.failed }]">
     <div class="ai-msg__avatar">
-      <el-icon>
-        <UserFilled v-if="message.role === 'user'" />
-        <MagicStick v-else />
-      </el-icon>
+      <!-- 用户侧同步登录头像；助手侧保持固定图标 -->
+      <el-avatar v-if="message.role === 'user'" :size="32" :src="userAvatar" />
+      <el-icon v-else><MagicStick /></el-icon>
     </div>
 
     <div class="ai-msg__main">
@@ -22,11 +21,11 @@
         </div>
 
         <!--
-          卡片默认只展示前几张：模型一次可能请求 20 条候选（它需要足够多的候选才能按标签筛），
-          全铺出来会变成一堵卡片墙，把文字回答挤出视口 —— 实测踩到。
-          超出的折起来，需要时再展开。
+          只展示**回答里真正推荐的那几部**（模型被要求带上 id），而不是工具的全部候选。
+          工具可能一次取回 20 条供模型按标签筛选，全铺出来会变成一堵卡片墙、
+          把文字回答挤出视口，而且与回答内容对不上 —— 实测踩到。超出的仍折起来。
         -->
-        <div v-if="message.tool_results?.length" class="ai-msg__cards">
+        <div v-if="recommendedCards.length" class="ai-msg__cards">
           <AiAnimeCard v-for="card in visibleCards" :key="card.id" :card="card" />
         </div>
         <button
@@ -44,9 +43,11 @@
 </template>
 
 <script setup lang="ts">
-import { MagicStick, UserFilled } from '@element-plus/icons-vue'
+import { MagicStick } from '@element-plus/icons-vue'
 import type { PropType } from 'vue'
 import { renderMarkdown } from '@/utils/markdown'
+import { resolveAvatarUrl } from '@/utils/avatar'
+import { useLoginStore } from '@/stores/modules/login'
 import AiAnimeCard from './AiAnimeCard.vue'
 import type { IAiChatMessage } from '@/stores/modules/ai'
 
@@ -57,17 +58,55 @@ const props = defineProps({
   },
 })
 
+const loginStore = useLoginStore()
+const userAvatar = computed(() => resolveAvatarUrl(loginStore.userInfo?.avatar))
+
 /** 折叠时最多展示几张卡片 */
 const COLLAPSED_LIMIT = 6
+
+/**
+ * 从回答文本里抽出提到的 subject id。
+ *
+ * 模型被要求「提到的番剧必须带上工具返回的 id」，实测它会写成
+ * `（id 501963）` / `（id 501963，评分 8.0）` 这类形式。
+ * 之所以靠解析而不是让模型再调一个「提交推荐」工具：省一轮往返与 token，
+ * 而且 id 本来就已经写在回答里了。
+ */
+function extractMentionedIds(text: string): number[] {
+  const ids: number[] = []
+  const re = /\bid\s*[:：]?\s*(\d{2,})/gi
+  let m: RegExpExecArray | null
+  while ((m = re.exec(text)) !== null) {
+    const n = Number(m[1])
+    if (Number.isSafeInteger(n) && !ids.includes(n)) ids.push(n)
+  }
+  return ids
+}
+
+/**
+ * 回答里真正推荐的番剧卡片。
+ *
+ * 关键：**只从工具返回的池子里按 id 挑**，所以模型即便编了 id 也变不出卡片 ——
+ * 「模型不产生番剧事实」这条原则在这里兜住。
+ * 一个 id 都没提（例如模型只做泛泛介绍）时退回展示候选池，避免什么都不显示。
+ */
+const recommendedCards = computed(() => {
+  const pool = props.message.tool_results ?? []
+  if (!pool.length) return []
+  const ids = extractMentionedIds(props.message.content)
+  if (!ids.length) return pool
+  const byId = new Map(pool.map((c) => [String(c.id), c]))
+  const picked = ids
+    .map((id) => byId.get(String(id)))
+    .filter((c): c is (typeof pool)[number] => !!c)
+  return picked.length ? picked : pool
+})
+
 const expanded = ref(false)
 const visibleCards = computed(() =>
-  expanded.value
-    ? props.message.tool_results ?? []
-    : (props.message.tool_results ?? []).slice(0, COLLAPSED_LIMIT),
+  expanded.value ? recommendedCards.value : recommendedCards.value.slice(0, COLLAPSED_LIMIT),
 )
-const hiddenCount = computed(() =>
-  Math.max(0, (props.message.tool_results?.length ?? 0) - COLLAPSED_LIMIT),
-)
+const hiddenCount = computed(() => Math.max(0, recommendedCards.value.length - COLLAPSED_LIMIT))
 
 /** 流式过程中每来一个增量都会重算；markdown-it 很快，这里不做节流 */
 const renderedContent = computed(() =>
@@ -84,8 +123,9 @@ const renderedContent = computed(() =>
   &--user {
     flex-direction: row-reverse;
 
+    // 用户侧是 el-avatar（图片），不需要底色圆底
     .ai-msg__avatar {
-      background: var(--primary-color);
+      background: transparent;
     }
 
     .ai-msg__main {

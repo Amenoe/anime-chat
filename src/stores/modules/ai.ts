@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { track } from '@/utils/track'
 import {
   AiRequestError,
   deleteAiConversation,
@@ -119,6 +120,10 @@ export const useAiStore = defineStore('ai', () => {
 
     streaming.value = true
     controller = new AbortController()
+    // 前端埋点与后端 `ai.chat` 事件是**两个视角**，都要有：
+    // 后端知道 token/模型/上游耗时，前端知道「用户等了多久、看到几张卡片、是否中途放弃」。
+    const startedAt = Date.now()
+    track('ai.send', { length: content.length, newConversation: !activeId.value })
 
     try {
       const result = await streamAiChat(
@@ -140,6 +145,15 @@ export const useAiStore = defineStore('ai', () => {
         controller.signal,
       )
 
+      const assistant = messages.value[assistantIndex]
+      track('ai.done', {
+        elapsedMs: Date.now() - startedAt,
+        aborted: result.aborted,
+        textLength: assistant.content.length,
+        cardCount: assistant.tool_results?.length ?? 0,
+        failed: !!assistant.failed,
+      })
+
       if (result.conversationId && !activeId.value) {
         activeId.value = result.conversationId
         // 新建了会话，刷新列表让标题出现
@@ -156,6 +170,8 @@ export const useAiStore = defineStore('ai', () => {
       if (e instanceof AiRequestError && (e.status === 429 || e.status === 503)) {
         errorMsg.value = message
         messages.value.splice(assistantIndex, 1)
+        // 配额用尽与上游故障要能区分开，否则看板上「AI 不可用」无从归因
+        track('ai.error', { status: e.status, message })
       } else {
         messages.value[assistantIndex].failed = true
         messages.value[assistantIndex].content ||= message
@@ -169,13 +185,16 @@ export const useAiStore = defineStore('ai', () => {
 
   /** 停止生成；服务端仍会保留已生成的部分并计费 */
   function stop() {
-    controller?.abort()
+    if (!controller) return
+    track('ai.stop')
+    controller.abort()
     controller = null
     streaming.value = false
   }
 
   async function removeConversation(id: string) {
     await deleteAiConversation(id)
+    track('ai.conversation.delete')
     conversations.value = conversations.value.filter((c) => c.id !== id)
     if (activeId.value === id) newConversation()
   }
