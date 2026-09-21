@@ -42,7 +42,7 @@
 > Maven 不在默认 PATH 时：`export PATH="$PATH:/Users/rain/Java/apache-maven-3.9.9/bin"`；本机 JDK 25（Boot 4 基线 Java 17，`anime-ai` 编译目标 21）。
 
 Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀perf` `🚨test` `📦build` `👷ci` `🔂revert`。
-⚠️ commitlint **不允许** `🔀merge` 类型，合并提交也要用上面 10 种之一（本项目用 `🌟feat`）。
+⚠️ commitlint 两条容易踩的规则：① **不允许 `🔀merge` 类型**，合并提交也要用那 10 种之一（用 `🌟feat`）；② **subject 不能以大写词开头**（`subject-case`），例如 `🌟feat(ai): AI 助手...` 会被拒，改成中文开头即可（`新增 AI 助手...`）。
 
 ### 环境变量（重要）
 
@@ -123,7 +123,7 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 12 | P2 | PlayerPane 拆分重构 | ✅ 2026-08-18 | 1209 行 → 375 行；拆出 useSourceSearch / SourceDrawer / source-quality；已提交推送 |
 | 13 | P1 | JWT 双 token + 前端静默刷新 | ✅ 2026-09-15 | accessToken 2h / refreshToken 30d 落库轮换吊销；前端 401 单次重试 + 并发合并；真实接口验收 24/24 |
 | 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端 `CLAUDE.md`；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
-| 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | 🔄 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试全绿）；**NestJS 网关**✅（`3858179`：SSE 转发 + 配额闸门 + 会话落库，实测 429/503/越权/多轮全过）。**剩余：前端 SSE 消费 + `Ai.vue` 对话界面** |
+| 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | ✅ 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试）；**NestJS 网关**✅（`3858179`）；**前端对话界面**✅（`aa65f50`，分支 `feat/ai-chat-ui` 未合并）。浏览器实测 11/11：流式渲染、Markdown、卡片、点按跳详情、刷新恢复 |
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
 
 ---
@@ -283,7 +283,9 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
   加上 `anime-chat-server` 的 `AiModule` 网关（SSE 转发 + 配额 + 会话落库）。
   实测覆盖：真实调用 DeepSeek、4 个打真实 Bangumi 接口的测试、配额 429、上游不可达 503、
   越权读写他人会话 404、多轮续聊。侧边栏「时间表」已改为「AI 助手」(`/ai`) 并入 `anime-chat` main。
-  **仍未完成**：前端真实对话界面（`/ai` 目前仍是占位页）—— 见看板 #15。
+  前端 `/ai` 也已从占位页换成真实对话界面（手写 SSE 消费，非 axios）。
+  **待合并分支**：`anime-chat` 的 `feat/ai-chat-ui`、`anime-chat-server` 的 `feat/ai-gateway`、
+  `anime-ai` 的 `feat/stateless-history`。
 - ⚠️ **一条被实测推翻的早期假设**：曾认为「Bangumi 的结构化过滤足以覆盖找番需求，故 MVP 不需向量库」。
   M1 打真实接口后确认 `POST /v0/search/subjects` 的 `keyword` 是**标题字面匹配**，
   `tag`/`meta_tags` 只能收窄、无法用于发现，「按题材找番」在该接口上走不通。
