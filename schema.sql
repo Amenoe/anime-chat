@@ -208,3 +208,26 @@ CREATE TABLE IF NOT EXISTS `ai_usage` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `IDX_ai_usage_user_date` (`user_id`,`stat_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 单次 AI 请求明细（2026-09-21 新增）。与 ai_usage 分工不同：
+--   ai_usage      = 按 (user_id, 日期) 聚合的计数，只服务「配额闸门」这个高频读场景
+--   ai_request_log = 每次请求一行，服务「管理员看板」这类低频分析场景
+-- 合并会让配额写路径变重、而实时聚合算配额又太慢，所以刻意分开。
+CREATE TABLE IF NOT EXISTS `ai_request_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` varchar(255) NOT NULL,
+  `conversation_id` char(36) DEFAULT NULL,
+  `model` varchar(64) DEFAULT NULL,
+  `prompt_tokens` int NOT NULL DEFAULT 0,
+  `completion_tokens` int NOT NULL DEFAULT 0,
+  `tool_calls` int NOT NULL DEFAULT 0,
+  `tool_names` varchar(255) DEFAULT NULL,
+  `latency_ms` int NOT NULL DEFAULT 0,
+  `first_token_ms` int DEFAULT NULL,
+  `status` enum('ok','error','client_abort') NOT NULL DEFAULT 'ok',
+  `finish_reason` varchar(32) DEFAULT NULL,
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `IDX_ai_request_log_user_time` (`user_id`,`create_time`),
+  KEY `IDX_ai_request_log_time` (`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
