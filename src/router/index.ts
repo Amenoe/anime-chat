@@ -16,9 +16,15 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/search/Search.vue'),
   },
   {
+    // AI 助手：原「时间表」入口（每日放送已由首页 WeeklyTimeline 承担）
+    path: '/ai',
+    name: 'Ai',
+    component: () => import('@/views/ai/Ai.vue'),
+  },
+  {
+    // 旧地址兼容：/timeline 曾是「时间表」占位页，保留跳转避免旧书签 404
     path: '/timeline',
-    name: 'Timeline',
-    component: () => import('@/views/timeline/Timeline.vue'),
+    redirect: '/ai',
   },
   {
     path: '/user',
