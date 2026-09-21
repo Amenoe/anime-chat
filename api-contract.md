@@ -156,7 +156,71 @@ Body：`{ "status": 0 | 1 }`
 | GET `/api/user-anime` — JWT | 查列表，`?status=` 过滤，按 update_time 倒序 |
 | GET `/api/user-anime/:bangumiId` — JWT | 查单条，无则 `data: null` |
 
-## 4. 建表策略
+## 4. AI 助手（2026-09-21 新增）
+
+网关在 `anime-chat-server`，检索与模型编排在独立的 `anime-ai` 服务（Spring Boot，8013）。
+**本服务的 MySQL 是会话历史的权威来源**，anime-ai 无状态。
+
+### POST `/api/ai/chat` — JWT（**SSE**）
+
+一轮对话，返回 `text/event-stream`。
+
+请求体（注意全局 `ValidationPipe` 开了 `forbidNonWhitelisted`，**多传字段直接 400**）：
+
+```json
+{ "conversationId": "可选，不传则新建", "message": "用户这轮说的话" }
+```
+
+响应头：
+
+| 头 | 说明 |
+| --- | --- |
+| `Content-Type` | `text/event-stream; charset=utf-8` |
+| `X-Conversation-Id` | 本轮所属会话 id。**新建会话时前端必须读它**，否则无法续聊 |
+| `X-Accel-Buffering` | `no`（避免 nginx 缓冲导致「一次性吐出」而非流式） |
+
+SSE 事件（与 anime-ai 的协议一致，见 `ai-chat-tech-stack.md` §4.5）：
+
+```
+event:text-delta    data:{"text":"..."}
+event:tool-call     data:{"name":"browse_anime","args":{...}}
+event:tool-result   data:{"name":"browse_anime","failed":false,"subjects":[{"id":…,"nameCn":…}]}
+event:usage         data:{"promptTokens":…,"completionTokens":…}
+event:error         data:{"message":"..."}
+event:done          data:{"conversationId":"...","finishReason":"STOP"}
+```
+
+⚠️ `data:` 后**没有空格**；`data` 恒为单行 JSON。前端解析要兼容 `data:x` 与 `data: x` 两种写法。
+
+错误（发生在写 SSE 头**之前**，所以是普通 JSON 信封）：
+
+| 状态码 | 场景 |
+| --- | --- |
+| 401 | 未登录 / token 无效 |
+| 429 | 当日配额用尽 → `{ code:429, message:"今日 AI 对话次数已用完（50 次/天），请明天再试" }` |
+| 503 | anime-ai 不可达 → `{ code:503, message:"AI 服务暂时不可用：…" }`。**此时不落库，并退回配额** |
+
+### GET `/api/ai/conversations` — JWT
+
+会话列表，按 `update_time` 倒序，最多 50 条。
+
+### GET `/api/ai/conversations/:id/messages` — JWT
+
+某会话的全部消息（按时间正序），含 `tool_results`（番剧卡片数组），用于刷新后恢复界面。
+非本人会话返回 **404**（不区分「不存在」与「不属于你」，避免探测他人会话 id）。
+
+### DELETE `/api/ai/conversations/:id` — JWT
+
+删除会话及其消息。同样对非本人会话返回 404。
+
+### 配额与计费
+
+- 按 `(user_id, 本地日期)` 一行计数，落在 `ai_usage` 表
+- **请求开始前**就 +1：用户中途断开也照样扣，否则「断开重连」可绕过配额
+- 唯一例外：**上游连不上时退回**（用户没拿到任何结果；且用户无法主动制造该情况）
+- 并发下可能略超扣（多个请求同时 +1 后都判超限），这是**故意 fail-closed**：宁可少给几次
+
+## 5. 建表策略
 
 - 开发：TypeORM `synchronize: true` 自动同步
 - 生产：`synchronize` 需关掉，用 `docs/schema.sql` 手工建表或迁移

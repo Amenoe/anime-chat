@@ -47,7 +47,8 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 ### 环境变量（重要）
 
 - 前端 `.env.*`：`VITE_SERVE_URL`（后端地址）、`VITE_BASE_URL`、`VITE_BASE_API`（/api）、`VITE_TIME_OUT`
-- 后端 `.env.development` / `.env.production`：`DB_*`、`JWT_SECRET` / `JWT_REFRESH_SECRET` / `JWT_ACCESS_EXPIRES_IN`（默认 2h）/ `JWT_REFRESH_EXPIRES_IN`（默认 30d）、`MINIO_*`（头像对象存储）、`QB_*`（BT 边下边播）、`OUTBOUND_PROXY`（可选出站代理）
+- 后端 `.env.development` / `.env.production`：`DB_*`、`JWT_SECRET` / `JWT_REFRESH_SECRET` / `JWT_ACCESS_EXPIRES_IN`（默认 2h）/ `JWT_REFRESH_EXPIRES_IN`（默认 30d）、`MINIO_*`（头像对象存储）、`QB_*`（BT 边下边播）、`OUTBOUND_PROXY`（可选出站代理）、**AI 网关：`AI_SERVICE_URL`（默认 `http://127.0.0.1:8013`）/ `AI_INTERNAL_TOKEN`（须与 anime-ai 侧一致）/ `AI_DAILY_QUOTA`（默认 50）/ `AI_HISTORY_WINDOW`（默认 20）等**
+- anime-ai 侧 `.env`：`AI_CHAT_API_KEY`（DeepSeek，必需）、`AI_CHAT_MODEL`（默认 `deepseek-flash`）、`AI_INTERNAL_TOKEN`、`AI_EMBEDDING_API_KEY`（SiliconFlow，M2 才用）
 - BT 播放依赖 qBittorrent WebUI（`QB_ENABLED=false` 时流媒体不受影响）；`docker-compose.playback.yml` 提供容器
 
 ### 前端架构要点
@@ -122,7 +123,7 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 12 | P2 | PlayerPane 拆分重构 | ✅ 2026-08-18 | 1209 行 → 375 行；拆出 useSourceSearch / SourceDrawer / source-quality；已提交推送 |
 | 13 | P1 | JWT 双 token + 前端静默刷新 | ✅ 2026-09-15 | accessToken 2h / refreshToken 30d 落库轮换吊销；前端 401 单次重试 + 并发合并；真实接口验收 24/24 |
 | 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端 `CLAUDE.md`；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
-| 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | 🔄 2026-09-21 | `anime-ai` 服务已完成并验证（`2e4cc3b`，SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试全绿）。**剩余**：NestJS 转发 + 配额、前端 SSE 消费 + `Ai.vue` 对话界面 |
+| 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | 🔄 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试全绿）；**NestJS 网关**✅（`3858179`：SSE 转发 + 配额闸门 + 会话落库，实测 429/503/越权/多轮全过）。**剩余：前端 SSE 消费 + `Ai.vue` 对话界面** |
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
 
 ---
@@ -278,10 +279,11 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
   可独立提交推送。此前它不属于任何仓库、无法随代码提交，是文档漂移的根因。
 - **待用户确认**：前端 `.env.production` 的 `VITE_BASE_URL` 由 `/pro/` 改为 `/` 仍未提交
   （提交流水线排除 `.env*`），部署路径变更需确认后再处理。
-- AI 能力**已有可运行服务**：新增第三仓 `anime-ai`（Spring Boot + LangChain4j，端口 8013），
-  SSE 对话链路已实测打通（真实调用 DeepSeek）、两个番剧工具与 4 个真实接口测试全绿。
-  侧边栏「时间表」已改为「AI 助手」(`/ai`) 并并入 `anime-chat` main。
-  **尚未打通**：NestJS 转发与配额、前端真实对话界面（前端目前仍是占位页）—— 见看板 #15。
+- AI 能力**端到端已通**：新增第三仓 `anime-ai`（Spring Boot + LangChain4j，端口 8013），
+  加上 `anime-chat-server` 的 `AiModule` 网关（SSE 转发 + 配额 + 会话落库）。
+  实测覆盖：真实调用 DeepSeek、4 个打真实 Bangumi 接口的测试、配额 429、上游不可达 503、
+  越权读写他人会话 404、多轮续聊。侧边栏「时间表」已改为「AI 助手」(`/ai`) 并入 `anime-chat` main。
+  **仍未完成**：前端真实对话界面（`/ai` 目前仍是占位页）—— 见看板 #15。
 - ⚠️ **一条被实测推翻的早期假设**：曾认为「Bangumi 的结构化过滤足以覆盖找番需求，故 MVP 不需向量库」。
   M1 打真实接口后确认 `POST /v0/search/subjects` 的 `keyword` 是**标题字面匹配**，
   `tag`/`meta_tags` 只能收窄、无法用于发现，「按题材找番」在该接口上走不通。

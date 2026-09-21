@@ -167,3 +167,44 @@ CREATE TABLE IF NOT EXISTS `anime_ep` (
   `link` varchar(255) NOT NULL,
   PRIMARY KEY (`ep_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─── AI 助手（2026-09-21 新增） ─────────────────────────────────
+-- 会话历史的权威来源是这三张表：anime-ai 服务是无状态的，
+-- 每次对话由 anime-chat-server 把历史窗口送过去。
+
+CREATE TABLE IF NOT EXISTS `ai_conversation` (
+  `id` char(36) NOT NULL,
+  `user_id` varchar(255) NOT NULL,
+  `title` varchar(255) DEFAULT NULL,
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `update_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `IDX_ai_conversation_user` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- tool_results 保存该轮工具返回的番剧卡片（JSON 数组）；
+-- 不落库的话用户刷新页面后只剩文字、卡片全丢。
+CREATE TABLE IF NOT EXISTS `ai_message` (
+  `id` char(36) NOT NULL,
+  `conversation_id` char(36) NOT NULL,
+  `user_id` varchar(255) NOT NULL,
+  `role` enum('user','assistant') NOT NULL,
+  `content` text NOT NULL,
+  `tool_results` json DEFAULT NULL,
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `IDX_ai_message_conversation` (`conversation_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- 按人按天的用量计数。(user_id, stat_date) 唯一，靠
+-- INSERT ... ON DUPLICATE KEY UPDATE 原子自增，避免并发下丢更新导致配额失效。
+CREATE TABLE IF NOT EXISTS `ai_usage` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` varchar(255) NOT NULL,
+  `stat_date` date NOT NULL,
+  `request_count` int NOT NULL DEFAULT 0,
+  `prompt_tokens` int NOT NULL DEFAULT 0,
+  `completion_tokens` int NOT NULL DEFAULT 0,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `IDX_ai_usage_user_date` (`user_id`,`stat_date`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
