@@ -24,20 +24,25 @@
 | --- | --- |
 | 前端 | `anime-chat` — Vue 3 + TS + Vite + Pinia + Element Plus + Artplayer + hls.js + socket.io-client |
 | 后端 | `anime-chat-server` — NestJS 9 + TypeORM 0.2 + Socket.IO + MySQL + MinIO + qBittorrent |
-| 定位 | 动漫讨论平台 +「放映室」一起看：左播放右聊天、房主强同步、按随机 `season_id` 多厅 |
+| **AI 服务** | **`anime-ai`** — Spring Boot 4.0.8 + Java 21 + LangChain4j 1.20.0（2026-09-21 新增）。只做检索与模型编排，不碰业务数据；监听 8013 |
+| 定位 | 动漫讨论平台 +「放映室」一起看：左播放右聊天、房主强同步、按随机 `season_id` 多厅；AI 助手提供推荐/寻找番剧 |
 | 语言 | 注释、commit、UI 均为中文 |
-| 仓库 | github.com/Amenoe/anime-chat · github.com/Amenoe/anime-chat-server（各自独立 git，分开提交）；本 `docs/` 为第三个独立 git 仓（仅文档，暂无远端） |
+| 仓库 | github.com/Amenoe/anime-chat · github.com/Amenoe/anime-chat-server（各自独立 git，分开提交）；`anime-ai` 为本地第三个代码仓（暂无远端）；本 `docs/` 为独立文档仓（暂无远端） |
 
 ### 命令速查
 
-| 动作 | 前端（anime-chat） | 后端（anime-chat-server） |
-| --- | --- | --- |
-| 启动 | `pnpm dev`（localhost:8012） | `pnpm start:dev`（localhost:3000） |
-| 类型检查 | `pnpm type-check` | `pnpm exec tsc --noEmit -p tsconfig.build.json` |
-| 构建 | `pnpm build-only`（跳过类型检查）/ `pnpm build` | `pnpm run build` |
-| 提交 | emoji 前缀 Angular 风格（commitlint + husky） | 同左 |
+| 动作 | 前端（anime-chat） | 后端（anime-chat-server） | AI 服务（anime-ai） |
+| --- | --- | --- | --- |
+| 启动 | `pnpm dev`（localhost:8012） | `pnpm start:dev`（localhost:3000） | `mvn spring-boot:run`（localhost:8013） |
+| 类型检查 | `pnpm type-check` | `pnpm exec tsc --noEmit -p tsconfig.build.json` | `mvn -q -B compile` |
+| 构建 | `pnpm build-only`（跳过类型检查）/ `pnpm build` | `pnpm run build` | `mvn -B package -DskipTests` |
+| 测试 | 无测试框架 | jest 已配但 0 spec | `mvn test`（`BangumiClientTest` **打真实 Bangumi 接口**，需联网） |
+| 提交 | emoji 前缀 Angular 风格（commitlint + husky） | 同左 | 同左（手动遵守，无 hook） |
+
+> Maven 不在默认 PATH 时：`export PATH="$PATH:/Users/rain/Java/apache-maven-3.9.9/bin"`；本机 JDK 25（Boot 4 基线 Java 17，`anime-ai` 编译目标 21）。
 
 Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀perf` `🚨test` `📦build` `👷ci` `🔂revert`。
+⚠️ commitlint **不允许** `🔀merge` 类型，合并提交也要用上面 10 种之一（本项目用 `🌟feat`）。
 
 ### 环境变量（重要）
 
@@ -108,7 +113,7 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 4 | P1 | 下线旧纯聊天：`/chat` 路由与页面/store 移除 | ✅ 2026-08-17 | ChatMessage 类型迁至 stores/types.ts；后端 addGroup 保留兼容并标 deprecated |
 | 5 | P1 | 文档同步：`docs/schema.sql` 补全新表；README 更新；CLAUDE.md 模块清单补放映室/播放/媒体源 | ✅ 2026-08-16 | schema 已含 group/playback/media_source 等全部表 |
 | 6 | P2 | 前端 chunk 拆分 | ✅ 2026-08-17 | Element Plus 按需引入 + artplayer/hls.js 独立分包；index 1.2MB → 525KB（gzip 408→176KB） |
-| 7 | P2 | `/timeline` 改为 AI 相关页面 | 🔄 2026-09-20 | 分支 `feat/ai-assistant`。路由占位已完成：侧边栏「时间表」→「AI 助手」(`/ai`)，`/timeline` 重定向兼容；技术栈方案见 `ai-chat-tech-stack.md`。AI 后端（`AiModule`）未开始 |
+| 7 | P2 | `/timeline` 改为 AI 相关页面 | ✅ 2026-09-21 | 已并入 `anime-chat` main（merge `727dc25`）。侧边栏「时间表」→「AI 助手」(`/ai`)，`/timeline` 保留重定向兼容旧书签；`views/ai/Ai.vue` 暂为占位页，待接入真实对话（见 #15） |
 | 8 | P2 | heartbeat 广播节流 | ✅ 2026-08-17 | 1s 内不重复广播 playback:state；非心跳控制即时广播 |
 | 9 | P2 | 首页「最近播放」 | ✅ 2026-08-17 | localStorage 记录；首页顶部横滑卡片，无记录隐藏；埋点：详情页点集/选源、放映室开播换源切集 |
 | 9 | P1 | 放映室离开二次确认 + 侧边栏改 a 标签 | ✅ 2026-08-17 | 头像/侧边栏导航弹确认；a 标签支持中键/Cmd 新开 |
@@ -117,8 +122,8 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 12 | P2 | PlayerPane 拆分重构 | ✅ 2026-08-18 | 1209 行 → 375 行；拆出 useSourceSearch / SourceDrawer / source-quality；已提交推送 |
 | 13 | P1 | JWT 双 token + 前端静默刷新 | ✅ 2026-09-15 | accessToken 2h / refreshToken 30d 落库轮换吊销；前端 401 单次重试 + 并发合并；真实接口验收 24/24 |
 | 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端 `CLAUDE.md`；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
-| 15 | P2 | AI 对话 MVP（对话 + `search_anime` 工具 + SSE + 配额） | ⬜ | 见 `ai-chat-tech-stack.md` §10；依赖看板 #7 的路由占位（已完成） |
-| 16 | P2 | RAG / 知识库 / Workflow 能力建设 | ⬜ | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.5，评估走 Python ragas 旁路脚本）；M1/M2 设计已定稿（§3.5、§3.6），未开工 |
+| 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | 🔄 2026-09-21 | `anime-ai` 服务已完成并验证（`2e4cc3b`，SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试全绿）。**剩余**：NestJS 转发 + 配额、前端 SSE 消费 + `Ai.vue` 对话界面 |
+| 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
 
 ---
 
@@ -273,9 +278,14 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
   可独立提交推送。此前它不属于任何仓库、无法随代码提交，是文档漂移的根因。
 - **待用户确认**：前端 `.env.production` 的 `VITE_BASE_URL` 由 `/pro/` 改为 `/` 仍未提交
   （提交流水线排除 `.env*`），部署路径变更需确认后再处理。
-- AI 相关页面已从「占位」转为**在建**：侧边栏「时间表」已改为「AI 助手」(`/ai`，分支 `feat/ai-assistant`)，
-  功能定位为「推荐番剧 / 寻找番剧」对话助手，技术栈见 `ai-chat-tech-stack.md`。
-  当前前端只有占位页，**后端 AI 能力尚未实现**（无 `AiModule`、无模型调用）。
+- AI 能力**已有可运行服务**：新增第三仓 `anime-ai`（Spring Boot + LangChain4j，端口 8013），
+  SSE 对话链路已实测打通（真实调用 DeepSeek）、两个番剧工具与 4 个真实接口测试全绿。
+  侧边栏「时间表」已改为「AI 助手」(`/ai`) 并并入 `anime-chat` main。
+  **尚未打通**：NestJS 转发与配额、前端真实对话界面（前端目前仍是占位页）—— 见看板 #15。
+- ⚠️ **一条被实测推翻的早期假设**：曾认为「Bangumi 的结构化过滤足以覆盖找番需求，故 MVP 不需向量库」。
+  M1 打真实接口后确认 `POST /v0/search/subjects` 的 `keyword` 是**标题字面匹配**，
+  `tag`/`meta_tags` 只能收窄、无法用于发现，「按题材找番」在该接口上走不通。
+  更正与替代方案见 `ai-rag-practice-roadmap.md` §2。
 - 计划/规格旧文档（superpowers 时代）已删除；`api-auth-collection.md` 已重写为 `api-contract.md`。
   设计决策以上文 §2 与 `COGNITION_SYNC.md` 为准。
 - 两仓均**没有可运行的测试**（后端 jest 已配置但 0 个 spec），验收全靠手动；见 `COGNITION_SYNC.md` §8。
