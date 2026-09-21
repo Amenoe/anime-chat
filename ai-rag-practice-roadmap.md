@@ -95,8 +95,8 @@
 ### 结论
 
 - **有 Java 后端基础 → 选 B（Java）**。复用已有杠杆，且避开从零学 Python；
-  Spring AI 2.0.1 + LangGraph4j 1.9.0 做「知识库 + RAG + Workflow」完全够用，
-  文档解析（Tika）甚至强于 Python。**代价是评估体系要自己写**。
+  LangChain4j 1.20.0 + LangGraph4j 1.9.0 做「知识库 + RAG + Workflow」完全够用，
+  文档解析（Tika 4.0）甚至强于 Python。**代价是评估体系要自己写**（对策见 §3.5）。
 - **没有 Java 基础 → 选 A（Python）**。学 Java AI 和学 Python AI 投入相当，
   但 Python 更贴目标 JD，且阶段 7 的评估能直接用 ragas，本地模型生态完整。
 - **确定目标是 Java 岗位 → 必须同时补 Java 后端深度**（Spring Cloud / 微服务 / JVM），
@@ -115,12 +115,15 @@ anime-chat (Vue)
 anime-chat-server (NestJS)          ← 鉴权 / 配额 / 会话 / 业务上下文
    │  POST /internal/ai/chat  SSE（内网 + 服务间 token）
    ▼
-anime-ai（三选一）
-   ├── A: FastAPI + LangChain/LangGraph          ── BGE-M3 + bge-reranker-v2-m3 + ragas
-   └── B: Spring Boot + Spring AI / LangChain4j   ── bge-small-zh / 远程 embedding + 自研评估
-   ├── Qdrant（向量 + 稀疏向量，混合检索）
-   ├── MySQL（读 user_anime / group_message；Bangumi 资料缓存）
-   └── Bangumi API（工具调用 + 语料同步）
+anime-ai（已选定 Java 路线）
+   Spring Boot 4.0.5 + LangChain4j 1.20.0
+   ├── Embedding：远程 BGE-M3（主）+ 本地 bge-small-zh（对照/离线）
+   ├── Qdrant（向量；M4 加稀疏向量做混合检索）
+   ├── MySQL（读 anime / user_anime / group_message）
+   ├── Bangumi API（语料同步 + 工具调用）
+   └── 离线评估：Python ragas 脚本（旁路，不在请求链路）
+
+   （未选）FastAPI + LangChain/LangGraph ── BGE-M3 + bge-reranker-v2-m3 + ragas
 ```
 
 NestJS 只做「鉴权 + 配额 + 转发 + 把当前用户上下文带给 AI 服务」，
@@ -140,13 +143,21 @@ NestJS 只做「鉴权 + 配额 + 转发 + 把当前用户上下文带给 AI 服
 
 | 项 | 选择 | 版本 | 说明 |
 | --- | --- | --- | --- |
-| 宿主 | Spring Boot | **4.1.1** | Spring AI 2.0.1 明确依赖 Boot 4.1.1；Java 基线 17（本机 25 ✅） |
-| AI 框架（主） | Spring AI | **2.0.1** | GA；含 `spring-ai-rag`、`spring-ai-vector-store-advisor`、`spring-ai-tool-search-advisor`、`spring-ai-retry`；Advisor 模式接线极短 |
-| AI 框架（备选） | LangChain4j | **1.20.0** | 概念与 Python LangChain 近乎 1:1（`EmbeddingStore`/`ContentRetriever`/`RetrievalAugmentor`/`AiServices`），且独有 `bge-small-zh` 本地 embedding 与 `onnx-scoring` 重排 —— **想强化 LangChain 概念迁移就选它** |
-| Workflow | LangGraph4j | **1.9.0** | 同时有 `langgraph4j-spring-ai` 与 `langgraph4j-langchain4j` 集成模块；`mysql-saver` 可持久化状态 |
+| 宿主 | Spring Boot | **4.0.5** | `langchain4j-spring-boot4-starter:1.20.0-beta30` 编译依赖 Boot **4.0.5**。4.1.1 大概率兼容但非其编译基线，**建议对齐 4.0.5** |
+| AI 框架（**已选**） | **LangChain4j** | **1.20.0** + beta **1.20.0-beta30** | 概念与 Python LangChain 近乎 1:1（`EmbeddingStore`/`ContentRetriever`/`RetrievalAugmentor`/`AiServices`），**概念迁移到 Python 最省力**；独有 `bge-small-zh` 本地 embedding 与 `onnx-scoring` 重排 |
+| AI 框架（未选） | Spring AI | 2.0.1 | GA、Spring 原生、Advisor 接线短，但需 Boot 4.1.1 且概念不与 LangChain 对应 |
+| Workflow | LangGraph4j | **1.9.0** | 有 `langgraph4j-langchain4j` 集成模块；`mysql-saver` 可持久化状态；`studio-springboot` 可视化 |
 | 向量库 | Qdrant | client **1.19.0** | 容器写法复用 `docker-compose.playback.yml` |
-| Embedding | **远程 API** | — | Java 无 BGE-M3 本地实现 → 走 阿里 `text-embedding-v3` / 智谱 `embedding-3` / SiliconFlow 的 BGE-M3 |
+| 向量库接入 | `langchain4j-qdrant` | 1.20.0-beta30 | ⚠️ beta 线 |
+| Embedding | **远程 API**（主）+ 本地 ONNX（对照） | — | Java 无 BGE-M3 本地实现；见 §3.6 |
 | 评估 | **Python 旁路脚本** | ragas 0.4.3 | 见下 |
+
+> **版本管理提醒（已核实）**：`langchain4j-bom:1.20.0` 内部用两个属性分别管版本 ——
+> `langchain4j.stable.version = 1.20.0`、`langchain4j.beta.version = 1.20.0-beta30`。
+> 所以**只需 import 一个 BOM**，GA 与 beta 模块会自动对齐，不必手动逐个 pin。
+> 但要知道：**Qdrant 接入、Spring starter、本地 embedding、ONNX 重排、Tika 解析器全在 beta 线上**，
+> 只有核心与 `langchain4j-open-ai` 是 GA。API 可能在小版本间变动，升级时留意 changelog。
+
 
 **关键设计：评估走 Python 旁路，不进服务**
 
@@ -170,8 +181,8 @@ golden set (JSON: 问题 + 期望 subject_id)
 
 | # | 交付 | 技术 | 验收 |
 | --- | --- | --- | --- |
-| **M1** | 链路打通（不含 RAG） | Boot 4.1.1 + Spring AI 2.0.1；`POST /internal/ai/chat` SSE；一个 `search_anime` 工具；NestJS 转发 + 配额；前端手写 SSE 消费 | 前端能流式显示回答，工具调用返回番剧卡片 |
-| **M2** | 最简 RAG | Qdrant 容器；批量导 `anime.description`；`search_knowledge` 工具 | 「想不起名字，主角是红发剑士」能召回候选 |
+| **M1** | 链路打通（不含 RAG） | Boot 4.0.5 + LangChain4j；`POST /internal/ai/chat` SSE；一个 `search_anime` 工具；NestJS 转发 + 配额；前端手写 SSE 消费 | 前端能流式显示回答，工具调用返回番剧卡片 |
+| **M2** | 最简 RAG | Qdrant 容器；批量导番剧语料；`search_knowledge` 工具 | 「想不起名字，主角是红发剑士」能召回候选 |
 | **M3** | 评估旁路 | golden set 80 条 + Python ragas 脚本 | 产出第一份 Hit Rate@k 基线数字 |
 | **M4** | 混合检索 + rerank | BM25（Lucene/Tika）+ 向量 + RRF 融合；`onnx-scoring` 或远程 rerank | 对比 M3 基线，指标提升且报告里有延迟代价 |
 | **M5** | 站内语料 + 权限隔离 | 导 `group_message`；按 `group_id` 强制 pre-filter | 「我们房上周聊的那部番」可答，且跨群检索不到 |
@@ -180,7 +191,111 @@ golden set (JSON: 问题 + 期望 subject_id)
 > 建议先做 **M1 → M2 → M3**：到 M3 就有「能演示 + 有数字」的最小闭环，
 > 比先把所有功能做完再想评估要好得多。
 
----
+### 3.6 M2 详细设计：最简 RAG（开工前定稿）
+
+#### ① 先定一个反直觉的结论：M2 **不做** chunking
+
+番剧简介的真实长度是 **50–300 字**（一条 = 一个完整语义单元）。硬切会同时坏事：
+- 破坏语义完整性（「主角是……结局……」，切开后两半都不完整）
+- top-k 被同一部番的多个碎片占满，**降低结果多样性**
+
+所以 M2 是 **1 条番剧 = 1 个向量点**。
+
+**那 chunking 在哪练？** → M5（放映室聊天记录）与字幕（长文本）。那时才有真实的切分取舍
+（按句 / 按时间窗 / 按语义段）。**不要为了「练 RAG」在短文本上硬造 chunking**，那是负收益。
+
+替代练习：**文档表示（document representation）** —— 把结构化字段拼成可检索文本，这一步在真实
+RAG 里同样关键，且 M2 可以做成实验：
+
+```
+[标题] 命运石之门 / Steins;Gate
+[类型] TV
+[标签] 科幻、悬疑、时间旅行、galgame 改
+[年份] 2011     [评分] 9.3     [排名] #2
+[简介] 主人公冈部伦太郎是……
+```
+
+字段顺序、是否含英文名、标签权重 —— 这几个模板在 M3 评估里可以直接对比出高低。
+
+#### ② Embedding 选型（Java 无 BGE-M3 本地实现）
+
+**⚠️ 重要前提：DeepSeek 没有 embedding 接口。** 对话用 DeepSeek，向量化必须另找一家。
+
+| 方案 | 维度 | 成本 | 接入方式 | 说明 |
+| --- | --- | --- | --- | --- |
+| **SiliconFlow BGE-M3**（M2 主选） | 1024 | 低 | OpenAI 兼容 → `langchain4j-open-ai` | 中文强、维度适中 |
+| 阿里 `text-embedding-v3` | 1024（可调） | 低 | DashScope | 与阿里云同机延迟低 |
+| 智谱 `embedding-3` | 2048 | 低 | 自有 SDK | 维度偏高 |
+| **本地 `bge-small-zh-v1.5`**（对照） | 512 | 0 | `langchain4j-embeddings-bge-small-zh-v15-q` | 零成本、无 key、可离线；质量低一档 |
+
+**建议主选 BGE-M3，同时把本地 512 维跑通** —— 这直接构成 M3 的第一个消融实验
+（本地 512 vs 远程 1024，差多少分、省多少钱）。
+
+#### ③ Qdrant 集合设计
+
+```
+collection: anime_knowledge
+  vectors: { size: 1024, distance: Cosine }        # BGE-M3；换本地模型则 512
+  payload:
+    subject_id    integer    ← 回链到 /detail/:anime_id 的钥匙
+    name / name_cn text
+    tags          keyword[]  ← pre-filter
+    meta_tags     keyword[]  ← TV/WEB/OVA/原创/漫画改…
+    year          integer    ← pre-filter
+    rating        float      ← pre-filter
+    rank          integer
+    text          text       ← 拼接后的检索文本（引用溯源用）
+    content_hash  keyword    ← 增量导入判重
+  payload_index: subject_id, year, rating, tags, content_hash
+```
+
+**要点**：`subject_id` 必须进 payload 且建索引 —— 它是「检索结果 → 前端卡片」的唯一桥梁，
+也是 M3 评估算 Hit Rate 的比对依据。
+
+#### ④ 语料获取管道
+
+| 步骤 | 做法 |
+| --- | --- |
+| 数据源 | ① 本地 MySQL `anime` 表（已有 `description`，先看条数与质量）② Bangumi `/v0/subjects?type=2&sort=rank` 分页补拉 |
+| M2 规模 | **先 3000 条**（足够做检索实验；embedding 成本约几毛钱，跑得也快） |
+| 限流 | Bangumi 需 `User-Agent`，**串行 + 1 req/s**，别并发打 |
+| 读取方式 | M2 让 Java 只读直连 MySQL（少一跳）；M5 再考虑收敛成 NestJS 内部接口 |
+| 幂等 | `content_hash = md5(拼接文本)`；Qdrant 用 `subject_id` 做 point id，hash 未变则跳过 |
+| 增量 | 重跑只 embed 变化的条目；删除的条目要显式清理 |
+
+#### ⑤ 检索接口设计 ← **M2 最关键的一条**
+
+**必须把「检索」和「生成」拆成两个接口。** 否则 M3 的离线评估无法进行：
+
+```
+POST /internal/retrieve                       ← 纯检索，不碰 LLM
+{ "query": "...", "topK": 10,
+  "filters": { "yearFrom": 2015, "minRating": 7.5, "metaTags": ["TV"] } }
+→
+{ "hits": [ { "subject_id": 123, "score": 0.83, "text": "...", "payload": {...} } ] }
+```
+
+- M3 的 Python 脚本**只调这个接口**即可算 Hit Rate@k / MRR，完全不依赖 LLM 生成
+- 「生成」走 M1 已建好的 `/internal/ai/chat`，把 retrieve 的结果塞进上下文
+- 过滤器走 Qdrant **pre-filter**（不是取回后再过滤 —— 后者会让无权限/不匹配的点占满 top-k）
+
+#### ⑥ M2 验收标准（可测）
+
+1. Qdrant 中 ≥ 3000 条向量，payload 字段与索引齐全
+2. `POST /internal/retrieve` 对 10 条手写查询结果合理，例如：
+   - 「想不起名字，主角是红发剑士，结局很虐」→ 至少 1 条相关命中
+   - 「时间循环 悬疑」→ 《命运石之门》类进 top5
+3. **幂等**：重复跑导入不产生重复点
+4. **增量**：改一条简介后重跑，只更新该条
+5. 记录冷启动耗时与 embedding 实际花费
+
+#### ⑦ M2 明确不做（划界，防止范围蔓延）
+
+- ❌ chunking（留 M5，短文本上做是负收益）
+- ❌ 混合检索 / BM25（M4）
+- ❌ rerank（M4）
+- ❌ 接 LLM 生成（M1 已接，M2 只做检索）
+- ❌ 字幕/群聊语料（M5）
 
 ---
 
@@ -318,46 +433,65 @@ langchain@1.5.11          @langchain/core@1.2.12
 **缺口**：`ragas` 无 JS 版 → 评估指标需自研（Hit Rate / MRR 手写不难，Faithfulness 要调 LLM 当裁判）；
 本地 BGE-M3 / reranker 基本只能走 API。
 
-### Java 侧（若已有 Java 后端基础则可行）
+### Java 侧（**本方案已选定**：LangChain4j）
 
 ```xml
-<!-- 编排：二选一 -->
-org.springframework.ai:spring-ai-bom:2.0.1          <!-- Spring AI GA，含 spring-ai-rag 模块 -->
-dev.langchain4j:langchain4j-bom:1.20.0              <!-- 245 个模块，组件化更细 -->
-org.bsc.langgraph4j:langgraph4j-bom:1.9.0           <!-- Workflow 状态机 -->
+<!-- 宿主：对齐 langchain4j-spring-boot4-starter 的编译基线 -->
+org.springframework.boot:spring-boot-starter-parent:4.0.5
 
-<!-- 检索 / 向量库 -->
-dev.langchain4j:langchain4j-qdrant:1.20.0           <!-- 或 spring-ai-starter-vector-store-qdrant -->
-io.qdrant:client:1.19.0                             <!-- 原生客户端 -->
-dev.langchain4j:langchain4j-pgvector:1.20.0
-dev.langchain4j:langchain4j-milvus:1.20.0
-dev.langchain4j:langchain4j-elasticsearch:1.20.0    <!-- 企业里常见，BM25+向量混合 -->
+<!-- 一个 BOM 管住 GA + beta 两套版本（stable 1.20.0 / beta 1.20.0-beta30） -->
+<dependencyManagement>
+  <dependency>
+    <groupId>dev.langchain4j</groupId>
+    <artifactId>langchain4j-bom</artifactId>
+    <version>1.20.0</version>
+    <type>pom</type><scope>import</scope>
+  </dependency>
+  <dependency>
+    <groupId>org.bsc.langgraph4j</groupId>
+    <artifactId>langgraph4j-bom</artifactId>
+    <version>1.9.0</version>
+    <type>pom</type><scope>import</scope>
+  </dependency>
+</dependencyManagement>
 
-<!-- 本地模型 -->
-dev.langchain4j:langchain4j-embeddings-bge-small-zh-v15-q:1.20.0   <!-- 仅 512 维 -->
-dev.langchain4j:langchain4j-onnx-scoring:1.20.0                    <!-- reranker（需自备 ONNX） -->
-ai.djl:bom:0.38.0                                                  <!-- 要 BGE-M3/Whisper 得自己上 -->
+<!-- 核心（GA，1.20.0） -->
+dev.langchain4j:langchain4j              <!-- AiServices / ChatMemory / RAG API → 1.20.0 -->
+dev.langchain4j:langchain4j-open-ai      <!-- OpenAI 兼容：DeepSeek 对话 + BGE-M3 embedding → 1.20.0 -->
 
-<!-- 文档解析 -->
+<!-- beta 线（1.20.0-beta30，由 BOM 自动对齐） -->
+dev.langchain4j:langchain4j-spring-boot4-starter                    <!-- Spring Boot 4 自动装配 -->
+dev.langchain4j:langchain4j-qdrant                                  <!-- 向量库接入 -->
+dev.langchain4j:langchain4j-embeddings-bge-small-zh-v15-q           <!-- 本地中文 embedding（512 维，对照用） -->
+dev.langchain4j:langchain4j-onnx-scoring                            <!-- 本地 reranker（M4，需自备 ONNX） -->
+dev.langchain4j:langchain4j-document-parser-apache-tika             <!-- M5 文档解析 -->
+dev.langchain4j:langchain4j-easy-rag                                <!-- 快速原型（可选） -->
+
+<!-- 向量库原生客户端（运维/直连调试用） -->
+io.qdrant:client:1.19.0
+
+<!-- 文档解析底层 -->
 org.apache.tika:tika-core:4.0.0                     <!-- 企业知识库场景强项 -->
 
-<!-- Workflow 可用配套（langgraph4j 36 模块节选） -->
-org.bsc.langgraph4j:langgraph4j-mysql-saver:1.9.0   <!-- = LangGraph checkpointer -->
-org.bsc.langgraph4j:langgraph4j-spring-ai:1.9.0
-org.bsc.langgraph4j:langgraph4j-studio-springboot:1.9.0   <!-- 状态图可视化 -->
+<!-- Workflow（M6，langgraph4j 36 模块节选） -->
+org.bsc.langgraph4j:langgraph4j-core:1.9.0
+org.bsc.langgraph4j:langgraph4j-langchain4j:1.9.0          <!-- 与 LangChain4j 集成（已选定） -->
+org.bsc.langgraph4j:langgraph4j-mysql-saver:1.9.0          <!-- = LangGraph checkpointer -->
+org.bsc.langgraph4j:langgraph4j-studio-springboot:1.9.0    <!-- 状态图可视化 -->
 org.bsc.langgraph4j:langgraph4j-opentelemetry:1.9.0
 ```
 
-**缺口（比 JS 路线更值得注意）**：
+**Java 基线**：`langchain4j-core` 字节码 major version **61 = Java 17**（本机 Java 25 ✅）。
+
+**缺口（已知并已有对策）**：
 1. **无 RAGAS 对等物** —— 已逐个版本探测确认 `langchain4j-evaluation` 在 Maven Central 不存在
-   （1.20.0/1.0.0/0.35.0/0.31.0 均 404；`langchain4j-core` 里只有 `RetrievalAugmentor`，
+   （1.20.0/1.0.0/0.35.0/0.31.0 均 404；`langchain4j-core` 里只搜到 `RetrievalAugmentor`，
    那是检索管线不是评估）；Spring AI 272 个模块也无 evaluation。
-   → **阶段 7 必须自研**：Hit Rate@k / MRR 好写，Faithfulness / Context Precision 要自己搭
-   LLM-as-judge。这本身是加分项（能讲清指标定义），但工作量比 `pip install ragas` 大得多。
+   → **对策：Python 旁路脚本**（§3.5），服务保持 Java，评估用 ragas 离线跑。
 2. **本地中文 embedding 只有 `bge-small-zh`（512 维）** —— 没有 BGE-M3、没有 bge-large-zh。
-   要 M3 只能：走远程 embedding API（阿里/智谱/SiliconFlow），或用 DJL 自己导 ONNX。
+   → **对策：主用远程 BGE-M3（1024 维），本地 512 维作为对照与离线 fallback**（§3.6 ②）。
 3. **ASR 自产字幕**：DJL 能跑 Whisper，但工程成本远高于 `faster-whisper`。
-   若走 Java，字幕语料建议改用「播放源自带字幕轨」或直接跳过阶段 5。
+   → **对策：M2/M5 先用简介与群聊语料；字幕改用播放源自带字幕轨，或直接跳过。**
 
 ### 基础设施
 
@@ -418,17 +552,19 @@ LangGraph 的 state/channel 设计；写了 RAG 就要能被追问切分、召�
 | 1 | 目标岗位 | **暂无明确岗位，先做出东西** → 优化目标从「JD 对齐」转为「最快跑出可演示闭环」 |
 | 2 | 语言底子 | **有 Java 后端经验**；本机 Java 25.0.4 LTS + Maven 3.9.9 |
 | 3 | AI 服务语言 | **Java**（依据与落地计划见 §3.5） |
-| 4 | 评估缺口对策 | **Python 旁路脚本**，不把服务改成 Python（§3.5） |
+| 4 | AI 框架 | **LangChain4j 1.20.0**（概念与 Python LangChain 1:1，迁移最省力；含本地 embedding 与 ONNX 重排） |
+| 5 | 评估缺口对策 | **Python 旁路脚本**，不把服务改成 Python（§3.5） |
+| 6 | M2 范围 | **已定稿**（§3.6）：不做 chunking、1 条番剧 = 1 向量点、检索与生成拆两个接口 |
 
 > 若日后明确要投互联网 AI 岗，需重新评估是否迁 Python —— 届时迁移的是库 API，
 > 不是 RAG 概念，成本可控。§3 的三方对比仍然有效。
 
 ### 仍待确认
 
-1. **Spring AI vs LangChain4j**：§3.5 推荐 Spring AI（GA、Spring 原生、接线短）；
-   若更看重 LangChain 概念迁移与本地模型（`bge-small-zh`/`onnx-scoring`），选 LangChain4j。
-2. **Embedding 供应商**：Java 无 BGE-M3 本地实现，需在 阿里 / 智谱 / SiliconFlow 中选一家。
-3. **时间预算**：2 周出 M1+M2，还是 2–3 个月做到 M6？
-4. **评估脚本的接受度**：接受「服务 Java + 评估 Python」的混合形态。
-5. **字幕语料**：Java 侧 ASR 成本高（DJL 手搓）→ 建议 M5 之后再考虑，或改用播放源自带字幕轨。
-6. **是否开源部署**：涉及语料版权与 API key 成本。
+1. **Embedding 供应商**：M2 主选 SiliconFlow BGE-M3（1024 维，OpenAI 兼容），
+   需确认是否接受引入第二家 API key（**DeepSeek 没有 embedding 接口**）。
+2. **时间预算**：2 周出 M1+M2，还是 2–3 个月做到 M6？
+3. **字幕语料**：Java 侧 ASR 成本高（DJL 手搓）→ 建议 M5 之后再考虑，或改用播放源自带字幕轨。
+4. **是否开源部署**：涉及语料版权与 API key 成本。
+5. **NestJS 侧 Session 归属**：会话历史存 MySQL（`ai_conversation`/`ai_message`）还是先放前端 localStorage。
+
