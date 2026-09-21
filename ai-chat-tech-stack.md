@@ -126,7 +126,7 @@ event: done          data: {"conversationId":"...","finishReason":"stop"}
 
 | 供应商 | `baseURL` | 模型示例 | 说明 |
 | --- | --- | --- | --- |
-| **DeepSeek（推荐默认）** | `https://api.deepseek.com` | `deepseek-chat` / `deepseek-reasoner` | 中文强、价格低、支持 function calling、国内直连 |
+| **DeepSeek（推荐默认）** | `https://api.deepseek.com` | `deepseek-flash` / `deepseek-v4-pro` | 中文强、价格低、支持 function calling、国内直连。旧名 `deepseek-chat`/`deepseek-reasoner` 已退役；`flash` 比 `v4-pro` 便宜约 4 倍，默认用 `flash` |
 | 阿里云百炼 DashScope | `https://dashscope.aliyuncs.com/compatible-mode/v1` | `qwen-plus` / `qwen-max` | 与阿里云生态同机部署延迟低 |
 | 智谱 GLM | `https://open.bigmodel.cn/api/paas/v4` | `glm-4-plus` | 国内合规 |
 | Moonshot Kimi | `https://api.moonshot.cn/v1` | `moonshot-v1-*` | 长上下文 |
