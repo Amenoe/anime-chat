@@ -12,6 +12,7 @@ declare module '@vue/runtime-core' {
     AppForm: typeof import('./../components/AppForm/AppForm.vue')['default']
     AvatarCropDialog: typeof import('./../components/AvatarCrop/AvatarCropDialog.vue')['default']
     ChatPane: typeof import('./../components/Room/ChatPane.vue')['default']
+    ElAlert: typeof import('element-plus/es')['ElAlert']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElDialog: typeof import('element-plus/es')['ElDialog']

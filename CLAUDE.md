@@ -119,6 +119,42 @@ Less with CSS custom properties for theming (dark theme). Key variables: `--bg-c
 
 Anime/二次元 style with consistent patterns: section headers use `border-left: 4px solid var(--primary-color)`, cards use `var(--aside-bg-color)` background with hover glow (`box-shadow: 0 0 12px rgba(104, 198, 189, 0.15)`), tags have subtle primary-color borders, and accent colors use `--primary-color`.
 
+### 埋点（`utils/track.ts` + `v-track` 指令）
+
+前端埋点只有两个入口，**不需要在业务代码里手写请求**：
+
+```vue
+<!-- 点击埋点（默认行为） -->
+<el-button v-track="'ai.send'">发送</el-button>
+<!-- 带属性；指令在**触发时**才读 binding.value，所以能拿到最新响应式值 -->
+<div v-track="{ event: 'ai.card.click', props: { id: card.id } }">…</div>
+<!-- 曝光埋点（IntersectionObserver，进入视口即上报） -->
+<div v-track.view="'ai.welcome.view'">…</div>
+<!-- 只上报一次 -->
+<button v-track.once="'ai.send'">…</button>
+```
+
+非 DOM 事件（例如「流式结束」）直接调 `track(event, props?, target?)`。
+
+约定与机制：
+
+- **攒批上报**：攒够 20 条或每 5s 发一批，关闭/切后台时用 `fetch(keepalive)` 补发
+  （不用 `sendBeacon` —— 它无法带 `Authorization`，登录用户会被记成匿名）。
+- **绝不阻断业务**：所有上报失败静默吞掉。埋点丢一条可以接受，用户操作失败不可以。
+- **不走 `common/request` 的 axios 实例**：那是业务请求层，会弹 `ElNotification`、
+  401 还会触发 token 刷新重试 —— 这三件事对埋点全是错的。
+- 页面浏览由 `router.afterEach` 统一上报 `page.view`，只记**路由名**不记完整 URL
+  （后者会带业务 id，容易变成事实上的用户行为明细）。
+- 事件名用点号分命名空间：`page.view` / `ai.send` / `ai.card.click`。
+  后端事件（如 `ai.chat`）也进同一张 `track_event` 表 —— 前后端埋点共用一条查询路径。
+
+⚠️ **`v-track` 的点击监听注册在捕获阶段（capture），不要改成冒泡。**
+踩过的坑：chip 上同时有 `@click="onSuggest"` 与 `v-track`。冒泡时 Vue 的处理器先执行，
+它把 `streaming` 置真触发重渲染；Vue 在**微任务**里刷新，而 DOM 规范允许微任务检查点
+插在「每个监听器调用之间」—— 于是重渲染卸载了元素、`unmounted` 摘掉了监听，
+浏览器继续派发本次事件时已经没有它，**埋点静默丢失**。
+捕获阶段在目标处理器之前执行，天然免疫，语义上也更对（先记「用户点了」再谈业务反应）。
+
 ## Environment Variables
 
 Defined in `.env.development` / `.env.production`:

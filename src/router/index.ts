@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { setTrackPage, track } from '@/utils/track'
 
 const routes: RouteRecordRaw[] = [
   {
@@ -45,6 +46,18 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.VITE_BASE_URL),
   routes,
+})
+
+/**
+ * 页面浏览埋点。
+ *
+ * 只上报**路由名**而不是完整 URL —— 后者会带上 `/detail/10380` 这类业务 id，
+ * 埋点表没必要存这些，而且容易变成事实上的用户行为明细。
+ */
+router.afterEach((to) => {
+  const page = typeof to.name === 'string' ? to.name : 'unknown'
+  setTrackPage(page)
+  track('page.view', { page }, page)
 })
 
 export default router
