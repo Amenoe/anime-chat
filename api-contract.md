@@ -220,7 +220,63 @@ event:done          data:{"conversationId":"...","finishReason":"STOP"}
 - 唯一例外：**上游连不上时退回**（用户没拿到任何结果；且用户无法主动制造该情况）
 - 并发下可能略超扣（多个请求同时 +1 后都判超限），这是**故意 fail-closed**：宁可少给几次
 
-## 5. 建表策略
+## 5. 埋点（2026-09-21 新增）
+
+前端行为与后端业务事件都写进**同一张 `track_event` 表**，走 `TrackService` 一条写入路径。
+这样管理员看板不必为每类数据各写一套查询。
+
+### POST `/api/track` — **匿名可用**
+
+前端**攒批**上报（攒够 20 条或每 5s 一批；关闭页面用 `fetch(keepalive)` 补发）。
+
+```json
+{ "events": [
+  { "event": "ai.card.click", "page": "Ai", "target": "card",
+    "props": { "id": 10380, "name": "命运石之门" },
+    "clientTs": "2026-09-21T08:00:00.000Z",
+    "anonymousId": "3f2a…" } ] }
+```
+
+- 单次最多 50 条（`ArrayMaxSize`）
+- 登录时按 `req.user` 归属；未登录时用 `anonymousId` 串联 —— 所以这个接口**不能**挂必需的 JWT 守卫
+- `props` 是自由 JSON；但 DTO 本身开了 `forbidNonWhitelisted`，**新增顶层字段要同步改 DTO**
+- 上报接口**不返回写入结果**，前端也不解析响应（埋点不该阻塞用户操作）
+
+### 事件命名约定
+
+点号分命名空间，便于按前缀聚合：
+
+| 前缀 | 来源 | 示例 |
+| --- | --- | --- |
+| `page.view` | 前端路由（`router.afterEach`） | `page.view { page: 'Ai' }` |
+| `ai.*` | 前端行为 | `ai.send` / `ai.done` / `ai.card.click` / `ai.welcome.view` |
+| `ai.chat` | **后端**业务事件 | 见下 |
+
+`ai.chat` 由网关在流结束后上报，`props` 含 `model / promptTokens / completionTokens /
+toolCalls / toolNames / latencyMs / firstTokenMs / status / finishReason / candidateCount`。
+
+> 前端 `ai.send`/`ai.done` 与后端 `ai.chat` 是**两个视角**，不是重复：
+> 后端知道 token、模型、上游耗时；前端知道用户等了多久、看到几张卡片、是否中途放弃。
+
+### 统计接口（**仅 root**）
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/track/stats/overview?days=` | 事件总量、独立用户、事件类型数、今日量 |
+| `GET /api/track/stats/top-events?days=&limit=` | 事件量排行 |
+| `GET /api/track/stats/daily?days=` | 按天趋势（含匿名数） |
+| `GET /api/ai/stats/overview` | AI：请求数、成功/错误/中途放弃、token、平均延迟与首字延迟 |
+| `GET /api/ai/stats/daily?days=` | AI：按天趋势 |
+| `GET /api/ai/stats/tools?days=` | 工具使用分布（按调用组合分组） |
+| `GET /api/ai/stats/top-users?days=&limit=` | 用量最高的用户 |
+
+非 `role = 'root'` 一律 403。`days` 收敛到 1–90，`limit` 上限 100。
+
+⚠️ 数值列在应用层用 `core/utils/sql.ts` 的 `toNumbers()` 收敛 ——
+TypeORM 的 mysql 驱动开了 `bigNumberStrings`，COUNT/SUM 回来是字符串，
+在 SQL 里包 `CAST(... AS SIGNED)` **无效**（实测）。
+
+## 6. 建表策略
 
 - 开发：TypeORM `synchronize: true` 自动同步
 - 生产：`synchronize` 需关掉，用 `docs/schema.sql` 手工建表或迁移

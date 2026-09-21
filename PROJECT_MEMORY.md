@@ -123,12 +123,54 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 12 | P2 | PlayerPane 拆分重构 | ✅ 2026-08-18 | 1209 行 → 375 行；拆出 useSourceSearch / SourceDrawer / source-quality；已提交推送 |
 | 13 | P1 | JWT 双 token + 前端静默刷新 | ✅ 2026-09-15 | accessToken 2h / refreshToken 30d 落库轮换吊销；前端 401 单次重试 + 并发合并；真实接口验收 24/24 |
 | 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端 `CLAUDE.md`；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
-| 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | ✅ 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试）；**NestJS 网关**✅（`3858179`）；**前端对话界面**✅（`aa65f50`，分支 `feat/ai-chat-ui` 未合并）。浏览器实测 11/11：流式渲染、Markdown、卡片、点按跳详情、刷新恢复 |
+| 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | ✅ 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试）；**NestJS 网关**✅（`3858179`）；**前端对话界面**✅（`aa65f50`，分支 `feat/ai-chat-ui` 未合并）。浏览器实测 11/11：流式渲染、Markdown、卡片、点按跳详情、刷新恢复；**用户头像同步 + 卡片与推荐对齐 + 埋点体系**✅ 2026-09-21 |
+| 17 | P2 | 管理员数据看板（展示埋点与 AI 用量） | ⬜ | **数据通道已就绪**：`/api/track/stats/*`、`/api/ai/stats/*`（仅 root）。缺前端页面 |
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
 
 ---
 
 ## 4. 修复记录
+
+### 2026-09-21 · 埋点体系：AI 明细表改造成通用事件流
+
+- **背景**：原先 AI 请求明细单独一张 `ai_request_log`，字段是为 AI 定制的。
+  要加前端行为埋点时，若再建一套就变成「每类数据一套表 + 一套查询」。
+- **改造**：换成通用埋点表 `track_event`（`event` + `props` JSON + `client_ts`），
+  前端行为与后端业务事件（`ai.chat`）**共用一条写入路径**（`TrackService`）。
+  `ai_request_log` 已删除。配额计数仍留在 `ai_usage`（高频读，需单行原子更新，
+  与明细的分析场景目标不同，刻意不合并）。
+- **前端**：新增 `v-track` 自定义指令（首次在本仓引入自定义指令）——
+  `v-track="'ai.send'"` 点击上报、`.view` 曝光（IntersectionObserver）、`.once` 只报一次；
+  非 DOM 事件直接调 `track()`。攒批上报（20 条 / 5s），关闭页面用 `fetch(keepalive)` 补发。
+- **取舍**：通用 JSON 表的代价是聚合要 `JSON_EXTRACT`。当前量级够用；
+  量级上来后应另建**物化汇总表**（走 `ai_usage` 的思路），而不是给通用表加业务专用列。
+
+### 2026-09-21 · 埋点：v-track 点击事件静默丢失（捕获阶段）
+
+- **现象**：示例问题 chip 上同时有 `@click="onSuggest"` 与 `v-track`，点击后 `ai.send` 上报了，
+  但 `ai.suggest.click` **从未出现** —— 埋点静默丢失，没有任何报错。
+- **根因**：`v-track` 默认在冒泡阶段注册监听。冒泡时 Vue 的 `@click` 先执行，
+  它把 `streaming` 置真触发重渲染；Vue 在**微任务**里刷新，而 DOM 规范允许微任务检查点
+  插在「每个监听器调用之间」—— 于是重渲染卸载了元素、`unmounted` 摘掉了我们的监听，
+  浏览器继续派发本次事件时列表里已经没有它。
+- **修复**：改用**捕获阶段** `addEventListener(..., { capture: true })`。
+  捕获在目标处理器之前执行，天然免疫；语义上也更对（先记「用户点了」再谈业务反应）。
+- **教训**：这类「元素可能在本次事件派发中途被卸载」的问题，只有真实浏览器点得出来 ——
+  单元测试与类型检查都不可能发现。
+
+### 2026-09-21 · 埋点：统计接口 403 与 500
+
+- **403**：`/api/track/stats/*` 忘了挂 `AuthGuard('jwt')`。没有守卫时 `req.user` 恒为 `undefined`，
+  连管理员都会被 `assertRoot` 判成 403 —— 加守卫才修好。
+- **500**：`SUM(props->>'$.promptTokens' + props->>'$.completionTokens')`。
+  `props->>` 取出来是**字符串**，`+` 做的是字符串拼接，`SUM` 直接报错。
+  两侧各自 `CAST(... AS UNSIGNED)` 才对。
+- **另一个反直觉点**：为了「返回值是数字」在 SQL 外层再包 `CAST(... AS SIGNED)` 是**无效**的 ——
+  TypeORM 的 mysql 驱动开了 `bigNumberStrings`，COUNT/SUM 回来仍是字符串。
+  最终用 `core/utils/sql.ts` 的 `toNumbers()` 在应用层收敛。
+  日期同理：`DATE()` 会以 Date 对象返回并被 JSON 化成 UTC 时间戳（`2026-09-21` 变成
+  `2026-09-20T16:00:00Z`，看板上日期整体差一天），要用 `DATE_FORMAT`。
+
 
 ### 2026-09-21 · AI 助手：记忆窗口槽位不足导致工具调用后丢失用户问题
 

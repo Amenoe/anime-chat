@@ -209,25 +209,24 @@ CREATE TABLE IF NOT EXISTS `ai_usage` (
   UNIQUE KEY `IDX_ai_usage_user_date` (`user_id`,`stat_date`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- 单次 AI 请求明细（2026-09-21 新增）。与 ai_usage 分工不同：
---   ai_usage      = 按 (user_id, 日期) 聚合的计数，只服务「配额闸门」这个高频读场景
---   ai_request_log = 每次请求一行，服务「管理员看板」这类低频分析场景
--- 合并会让配额写路径变重、而实时聚合算配额又太慢，所以刻意分开。
-CREATE TABLE IF NOT EXISTS `ai_request_log` (
+-- ─── 通用埋点（2026-09-21 新增，取代原 ai_request_log）──────────
+-- 前端行为埋点与后端业务事件（ai.chat / page.view …）**共用这一张表**，
+-- 管理员看板不必为每类数据各写一套查询。
+-- props 用 JSON 存自定义属性，避免每加一个字段就改表结构；
+-- client_ts 与 create_time 分开：前端是批量延迟上报的，入库时间可能晚几秒。
+-- ⚠️ 代价是聚合要 JSON_EXTRACT。这个量级够用；量级上来后应另建物化汇总表，
+--    而不是给这张通用表加业务专用列。
+CREATE TABLE IF NOT EXISTS `track_event` (
   `id` bigint NOT NULL AUTO_INCREMENT,
-  `user_id` varchar(255) NOT NULL,
-  `conversation_id` char(36) DEFAULT NULL,
-  `model` varchar(64) DEFAULT NULL,
-  `prompt_tokens` int NOT NULL DEFAULT 0,
-  `completion_tokens` int NOT NULL DEFAULT 0,
-  `tool_calls` int NOT NULL DEFAULT 0,
-  `tool_names` varchar(255) DEFAULT NULL,
-  `latency_ms` int NOT NULL DEFAULT 0,
-  `first_token_ms` int DEFAULT NULL,
-  `status` enum('ok','error','client_abort') NOT NULL DEFAULT 'ok',
-  `finish_reason` varchar(32) DEFAULT NULL,
+  `event` varchar(80) NOT NULL,
+  `user_id` varchar(255) DEFAULT NULL,
+  `anonymous_id` varchar(64) DEFAULT NULL,
+  `page` varchar(80) DEFAULT NULL,
+  `target` varchar(120) DEFAULT NULL,
+  `props` json DEFAULT NULL,
+  `client_ts` datetime(3) DEFAULT NULL,
   `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
-  KEY `IDX_ai_request_log_user_time` (`user_id`,`create_time`),
-  KEY `IDX_ai_request_log_time` (`create_time`)
+  KEY `IDX_track_event_event_time` (`event`,`create_time`),
+  KEY `IDX_track_event_user_time` (`user_id`,`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
