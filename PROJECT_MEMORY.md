@@ -126,10 +126,63 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | ✅ 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试）；**NestJS 网关**✅（`3858179`）；**前端对话界面**✅（`aa65f50`，分支 `feat/ai-chat-ui` 未合并）。浏览器实测 11/11：流式渲染、Markdown、卡片、点按跳详情、刷新恢复；**用户头像同步 + 卡片与推荐对齐 + 埋点体系**✅ 2026-09-21（已合入 main 并推送） |
 | 17 | P2 | 管理员数据看板（展示埋点与 AI 用量） | ✅ 2026-09-22 | 前端 `/admin` + 侧边栏按 role 动态入口；图表用 echarts 6（按需注册 + 独立分包，Admin 101KB / charts 549KB 均为懒加载）。顺带修出 3 个后端统计 bug（见 §4）。**初始没有任何 root 账号**，需手工 `UPDATE user SET role='root'`（见 `api-contract.md` §5） |
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
+| 18 | P1 | 看板 v2：亮色适配 / 事件中文化 / 指标重构 / AI 登录门禁 | ✅ 2026-09-22 | 新增 `stats/engagement`（访问量·消耗·使用率）；`CHART_COLORS` 改为运行时读 CSS 变量（图表终于跟随主题）；事件中文名映射 `constants/track-events.ts`；AI 页未登录不再发请求。**顺带修出 `search.submit` 从未上报**（见 §4） |
+| 19 | P1 | anime-ai 话题范围守卫（只聊动漫） | ✅ 2026-09-22 | 提示词加固 + 输入前置拦截，**fail-open**。拒答走正常 SSE、`finishReason=SCOPE_REJECTED`、不计为错误。71 项纯函数单测 |
+| 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | ⬜ | **规划已完成**：见 `admin-roadmap.md`（含分期、接口设计、风险边界）。⚠️ 规划期间查出 3 个既有问题：`user.status` 是在线状态不能当封禁位；`AnimeController` 零守卫 + `AnimeService` 写操作是桩；`GET /api/user` 任何登录用户可枚举全表 |
 
 ---
 
 ## 4. 修复记录
+
+### 2026-09-22 · 看板 v2：亮色适配、事件中文化、指标重构、AI 范围守卫
+
+一轮六项改进（用户提出），顺手查出 2 个真 bug：
+
+1. **看板图表在亮色主题下看不清**（用户实测反馈）。
+   根因：`CHART_COLORS` 把颜色硬编码成暗色一套 —— ECharts 画在 canvas 上读不到 CSS 变量，
+   当初就「只好」抄了一份，结果亮色下坐标轴文字/网格线与背景糊在一起。
+   **修法不是再抄一份亮色表**（品牌色一改就要同步两处、必然漏），而是新建
+   `composables/useChartTheme.ts` 运行时 `getComputedStyle` 读令牌。
+   同时 tooltip 也给了主题色（ECharts 默认白底黑字，暗色下很刺眼）。
+   ⚠️ 踩到第二层：一开始依赖 `useTheme()` 的 `mode` ref，实测**直接改 `data-theme` 属性时图表不重绘**
+   （亮色主色像素命中 0、旧暗色仍有 1307）。CSS 令牌挂在 `[data-theme]` 上，
+   **DOM 才是唯一事实来源** → 改用 `MutationObserver` 监听属性。两条路径现在都生效。
+   **验证手段**：采样 canvas 像素统计落在目标主色附近的个数（暗色 1504 → 亮色 1504、旧色残留 0），
+   而不是「看着差不多」。
+2. **`search.submit` 一次都没上报**（自查发现，非用户报告）。
+   模板写 `@click="onSearch"` 时 **Vue 会把事件对象当第一个实参传进去**，
+   而当时用 `onSearch(fromSortChange = false)` 的参数区分「新搜索 / 换排序重发」——
+   事件对象是真值，于是埋点被静默跳过。
+   **后果是看板「手动搜索次数」永远 0、「AI 使用率」永远 100%**，且不报任何错。
+   修法不是加个判断补丁，而是**拆成两个入口函数**（`onSearch` 计数 / `runSearch` 不计数，
+   `onSortChange` 调后者），从结构上消除「参数被事件对象顶掉」的可能。
+   这个坑只有在核对**数据库真实行**时才会暴露 —— 界面上一切正常。
+3. **事件代号改为中文直白名**：新增 `src/constants/track-events.ts`，
+   `event.view` 这种内部代号不再直接摆给管理员。`page.view` 的文案由 `page` 拼出
+   （`Home` → 首页访问），所以映射是**函数**不是纯字典。
+   为此后端 `statsTopEvents` 改为按 `(event, page)` 分组。
+   表里没有的事件名**原样显示而非「未知」** —— 新加埋点时一眼看出缺映射。
+4. **AI 用量指标重构**：移除延迟与工具调用，聚焦**访问量 / 消耗 / 使用率**。
+   新增 `GET /api/ai/stats/engagement`（口径集中在后端一处，含
+   `ai_rate = AI 对话 ÷ (AI + 手动搜索)` 与两侧跳转率）。为此给搜索页补了两个埋点。
+   使用率四张卡都把**算式**写进 hint，因为只看百分比无法复核口径。
+5. **AI 助手改为登录后可用**：`/ai` 未登录只显示登录引导，不渲染对话区、不发任何 `/api/ai/*`。
+   后端本来就要求 JWT，改的是前端体验。同时给 ai store 补 `reset()`——
+   **store 是单例，登出不清空会把上一个人的会话列表与消息展示给下一个登录的人**，
+   属于跨账号数据泄露而非体验问题。
+6. **anime-ai 增加话题范围守卫**：系统提示词加固 + 输入关键词前置拦截（见
+   `ai-chat-tech-stack.md` §4.5）。拒答走**正常 SSE 流**、HTTP 200、
+   `finishReason=SCOPE_REJECTED`、`status=ok` —— 拒答是业务结果不是错误，
+   不能污染看板错误率（实测 0 条 `status=error`）。守卫是 **fail-open** 的：
+   拒答需要正面证据、放行不需要，误伤（用户直接走掉）远比漏放（浪费一次生成）严重。
+   71 项纯函数单测覆盖放行/拒答/注入/易误伤边界。
+
+**验证**：三仓 tsc/build/lint/prettier/mvn test 全绿；headless Chrome 双主题像素级核对
+（含 `data-theme` 属性路径与真实头部切换两条路径）、未登录门禁（`/api/ai/*` 请求数为 0）、
+真实 AI 提问（20 张卡片、`failed:false`、413 个 text-delta、0 error）、
+真实搜索（20 条结果 + 跳详情）、拒答端到端（网关埋点 `SCOPE_REJECTED`/`model=null`/0 error）。
+指标口径用**已知数字的 fixture** 验算过一遍（期望 50/50/20/12000/1200 全部吻合），
+再用真实产生的数据复核（3 次 AI + 1 次搜索 → 75%）。
 
 ### 2026-09-22 · 管理看板：顺带查出 3 个统计 bug + 1 个前端渲染 bug
 

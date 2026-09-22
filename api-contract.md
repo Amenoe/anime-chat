@@ -161,6 +161,10 @@ Body：`{ "status": 0 | 1 }`
 网关在 `anime-chat-server`，检索与模型编排在独立的 `anime-ai` 服务（Spring Boot，8013）。
 **本服务的 MySQL 是会话历史的权威来源**，anime-ai 无状态。
 
+> **本模块全部接口需要登录**（`@Controller('ai')` 上挂了 `@UseGuards(AuthGuard('jwt'))`）。
+> 前端 `/ai` 页面**未登录时只显示登录引导、不渲染对话区、也不发任何 `/api/ai/*` 请求** ——
+> 对话历史属于隐私，且白挨 401 会把界面刷成错误态（同 `User.vue` 的做法）。
+
 ### POST `/api/ai/chat` — JWT（**SSE**）
 
 一轮对话，返回 `text/event-stream`。
@@ -276,29 +280,62 @@ event:done          data:{"conversationId":"...","finishReason":"SCOPE_REJECTED"
 | 前缀 | 来源 | 示例 |
 | --- | --- | --- |
 | `page.view` | 前端路由（`router.afterEach`） | `page.view { page: 'Ai' }` |
-| `ai.*` | 前端行为 | `ai.send` / `ai.done` / `ai.card.click` / `ai.welcome.view` |
+| `ai.*` | 前端行为 | `ai.send.click` / `ai.done` / `ai.card.click` / `ai.welcome.view` |
+| `search.*` | 前端行为（搜索页） | `search.submit` / `search.result.click` |
+| `admin.*` | 前端行为（看板自身） | `admin.range.change` / `admin.refresh` |
 | `ai.chat` | **后端**业务事件 | 见下 |
 
 `ai.chat` 由网关在流结束后上报，`props` 含 `model / promptTokens / completionTokens /
 toolCalls / toolNames / latencyMs / firstTokenMs / status / finishReason / candidateCount`。
 
-> 前端 `ai.send`/`ai.done` 与后端 `ai.chat` 是**两个视角**，不是重复：
+`finishReason` 除上游给的 `STOP` 等值外，还有 `SCOPE_REJECTED` ——
+anime-ai 的**话题范围守卫**拦下非动漫提问时给出。这种轮次是**正常业务结果**：
+HTTP 200、不发 `error` 事件、`status=ok`、`model=null`、token 全为 0。
+所以看板的错误率**不会**被拒答污染（见 §4 与 `ai-chat-tech-stack.md` §4.5）。
+
+> 前端 `ai.send.click`/`ai.done` 与后端 `ai.chat` 是**两个视角**，不是重复：
 > 后端知道 token、模型、上游耗时；前端知道用户等了多久、看到几张卡片、是否中途放弃。
+
+**前端事件的中文名映射在 `anime-chat` 的 `src/constants/track-events.ts`** ——
+看板不直接摆 `page.view` 这种内部代号。表里没有的事件名**原样显示**（不显示「未知」），
+这样新加埋点时会一眼看出「这里少了一条映射」。
 
 ### 统计接口（**仅 root**）
 
 | 接口 | 说明 |
 | --- | --- |
 | `GET /api/track/stats/overview?days=` | 事件总量、独立用户、事件类型数、今日量 |
-| `GET /api/track/stats/top-events?days=&limit=` | 事件量排行 |
+| `GET /api/track/stats/top-events?days=&limit=` | 事件量排行，**按 (event, page) 分组**，故多一个 `page` 字段 |
 | `GET /api/track/stats/daily?days=` | 按天趋势（含匿名数） |
 | `GET /api/ai/stats/overview` | AI：请求数、成功/错误/中途放弃、token、平均延迟与首字延迟（**全时段**，不吃 `days`） |
+| `GET /api/ai/stats/engagement?days=` | **看板主指标**：访问量 / 消耗 / 使用率（含 AI vs 手动搜索对比），口径见下 |
 | `GET /api/ai/stats/daily?days=` | AI：按天趋势 |
-| `GET /api/ai/stats/tools?days=` | 工具使用分布（按调用组合分组） |
+| `GET /api/ai/stats/tools?days=` | 工具使用分布（按调用组合分组）。**看板已不展示**，接口保留备用 |
 | `GET /api/ai/stats/top-users?days=&limit=` | 用量最高的用户，含 `username`/`nickname` |
 
 非 `role = 'root'` 一律 403。`days` 收敛到 1–90，`limit` 上限 100。
 前端页面对应 `/admin`（侧边栏入口只对 root 展示）。
+
+#### `engagement` 的口径（**改之前先看这里**）
+
+这些是**跨功能**的业务定义，只在后端定义一处（`AiService.statsEngagement`），前端不拼装：
+
+| 字段 | 口径 |
+| --- | --- |
+| `page_views` / `page_users` | `event='page.view' AND page='Ai'` 的次数 / 去重用户 |
+| `chat_requests` / `chat_users` | `ai.chat` 的次数 / 去重用户（**发起即计**，不看成功与否） |
+| `total_tokens` / `tokens_per_request` | 输入+输出 token 之和 ÷ `chat_requests` |
+| `card_click_rate` | `ai.card.click` ÷ `chat_requests`。一轮可返回多张卡，**可能 > 100%** —— 它衡量「一次对话平均被点开几个推荐」，不是「多少比例的对话被点开」 |
+| `search_count` / `search_users` | `search.submit` 的次数 / 去重用户。**换排序的重发不计**（那会灌水分母） |
+| `search_card_click_rate` | `search.result.click` ÷ `search_count`，与 AI 侧对称可比 |
+| `ai_rate` | `chat_requests` ÷ (`chat_requests` + `search_count`)。回答「找番时更倾向 AI 还是搜索」。**不含首页/详情页浏览** —— 那是「逛」不是「找」 |
+
+⚠️ **`ai_rate` 依赖四个前端埋点事件名**（`page.view` / `ai.card.click` / `search.submit` /
+`search.result.click`），常量集中在 `AiService` 顶部，改名要两端一起改。
+**查不到事件名不会报错，只会静默算成 0**，看板上表现为「AI 使用率 100%」这种假象 ——
+本开发过程中就因为一处埋点没上报踩过（见 `PROJECT_MEMORY.md` 修复记录）。
+
+⚠️ 看板「使用率」四张卡都把**算式**写进 hint（分子分母都给出）：只看百分比无法复核口径。
 
 **响应字段一律是数字，不会出现 `null`。** 零行时 `COUNT` 天然返回 0，但
 `SUM(...)` 返回 **NULL** —— 所以每个 `SUM` 都包了 `COALESCE(...,0)`
