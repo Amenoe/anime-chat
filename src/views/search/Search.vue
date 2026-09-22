@@ -67,6 +67,7 @@
           <div
             v-for="item in displayList"
             :key="item.id"
+            v-track="{ event: 'search.result.click', props: { id: item.id } }"
             class="anime-card"
             @click="animeClick(item.id)"
           >
@@ -101,6 +102,7 @@ import { Search } from '@element-plus/icons-vue'
 import { searchAnime, type BangumiSearchSort } from '@/api/search'
 import type { IBangumiSubject } from '@/api/types'
 import { SEARCH_META_TAG_CATEGORIES } from '@/constants/bangumi-meta-tags'
+import { track } from '@/utils/track'
 
 defineOptions({ name: 'Search' })
 
@@ -165,7 +167,17 @@ function canQuery() {
   return Boolean(searchText.value.trim())
 }
 
-async function onSearch() {
+/**
+ * 真正执行搜索（**不计数**）。
+ *
+ * 与 `onSearch` 拆开是为了消除一个很隐蔽的坑：
+ * 模板里写 `@click="onSearch"` 时，Vue 会把**事件对象**当第一个实参传进去，
+ * 所以「用参数区分是否计数」的写法必然失效 —— 事件对象是真值。
+ * 实测后果：`search.submit` 一次都没上报，看板上「手动搜索次数」永远是 0、
+ * 「AI 使用率」永远是 100%，而且完全不报错。
+ * 现在改成两个入口函数各自决定要不要计数，不存在「参数被事件对象顶掉」的可能。
+ */
+async function runSearch() {
   const keyword = searchText.value.trim()
   if (!keyword) {
     searchList.value = []
@@ -191,6 +203,26 @@ async function onSearch() {
   }
 }
 
+/**
+ * 用户主动发起搜索（按钮 / 回车）—— 计一次「手动搜索」。
+ *
+ * 埋点**不记关键词**：项目既有约定是不把业务内容写进埋点表
+ * （`page.view` 也只记路由名不记完整 URL）。这里只记是否用了标签/排序条件，
+ * 够回答「高级筛选有没有人用」，又不至于变成一份搜索词流水。
+ *
+ * 计数发生在**请求之前**：口径要和后端的 `ai.chat` 对齐 ——
+ * 那个事件是「发起了一轮对话」就算，不看成功与否，
+ * 否则网络抖动会让「AI 使用率」凭空偏高。
+ */
+async function onSearch() {
+  if (canQuery()) {
+    track('search.submit', {
+      filtered: Object.values(selectedTags).some(Boolean) || sortMode.value !== 'match',
+    })
+  }
+  await runSearch()
+}
+
 function onClear() {
   searchText.value = ''
   searchList.value = []
@@ -201,7 +233,9 @@ function onClear() {
 function onSortChange() {
   if (!searched.value || !canQuery()) return
   if (sortMode.value === 'date' && searchList.value.length) return
-  onSearch()
+  // 换排序是**重发**而不是新的搜索意图：若计进 search.submit，
+  // 分母会被灌水、看板的「AI 使用率」凭空偏低。所以走 runSearch 而不是 onSearch。
+  void runSearch()
 }
 
 /** 只清空标签条件，不请求接口 */
