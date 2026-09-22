@@ -144,8 +144,11 @@ CREATE TABLE IF NOT EXISTS `media_source` (
   UNIQUE KEY `IDX_media_source_user_hash` (`user_id`,`url_hash`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ─── 本地番剧表（Bangumi 迁移后仅作兜底，addGroup 旧路径使用） ──
-
+-- ─── 本地番剧表（Bangumi 迁移后仅作兜底） ────────────────────────
+-- ⚠️ `anime_ep` 表已于 2026-09-22 随番剧 HTTP 子系统一并移除：
+--    `/api/anime` 全部端点无鉴权、写操作是脚手架桩、表 0 行、前端零调用。
+--    `anime` 表**保留** —— `chat.gateway` 那个已标 deprecated 的 `addGroup`
+--    路径仍在用它取标题兜底。等那条路径也下线时，这张表可以一起删。
 CREATE TABLE IF NOT EXISTS `anime` (
   `anime_id` int NOT NULL,
   `title` varchar(255) NOT NULL,
@@ -159,16 +162,6 @@ CREATE TABLE IF NOT EXISTS `anime` (
   `region` varchar(255) NOT NULL,
   `status` varchar(255) NOT NULL,
   PRIMARY KEY (`anime_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
-
-CREATE TABLE IF NOT EXISTS `anime_ep` (
-  `ep_id` int NOT NULL,
-  `anime_id` int NOT NULL,
-  `title` varchar(255) NOT NULL,
-  `cover` varchar(255) NOT NULL,
-  `first_date` varchar(255) NOT NULL,
-  `link` varchar(255) NOT NULL,
-  PRIMARY KEY (`ep_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ─── AI 助手（2026-09-21 新增） ─────────────────────────────────

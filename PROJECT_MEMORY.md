@@ -156,6 +156,9 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
    ⚠️ **桩在 `AnimeService` 而不是 `AnimeController`**（controller 只是转发）——
    规划文档这里写错了层，已修正，否则下一个人会照着 controller 找半天。
    `Anime` 实体**保留**：`chat.gateway` 那个已标 deprecated 的 `addGroup` 路径还在用它取标题兜底。
+   `anime_ep` 表也从 `schema.sql` 移除了（实体与唯一使用者都已删，留着就是死表）。
+   顺带**首次实测了 `schema.sql`**：建临时库执行 → 14 张表齐全、`user` 新列到位、重复执行幂等。
+   生产建库依赖这个文件，之前从没跑过，属于「没验证过的关键路径」。
 5. **修掉 `UserService.delete` 的孤儿数据**（8 张表）。根因不是「忘了写 DELETE」，
    而是**同一个语义有两份实现**（用户自删 vs 管理删号）必然漂移 → 抽
    `AccountCleanupService.purge`，并**直接删掉 `UserService.delete` 这个裸删方法**，
