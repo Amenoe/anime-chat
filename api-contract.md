@@ -187,10 +187,37 @@ event:tool-call     data:{"name":"browse_anime","args":{...}}
 event:tool-result   data:{"name":"browse_anime","failed":false,"subjects":[{"id":…,"nameCn":…}]}
 event:usage         data:{"promptTokens":…,"completionTokens":…}
 event:error         data:{"message":"..."}
-event:done          data:{"conversationId":"...","finishReason":"STOP"}
+event:done          data:{"conversationId":"...","finishReason":"STOP","model":"deepseek-flash"}
 ```
 
 ⚠️ `data:` 后**没有空格**；`data` 恒为单行 JSON。前端解析要兼容 `data:x` 与 `data: x` 两种写法。
+
+### 话题范围守卫（2026-09-22 新增，anime-ai 侧）
+
+anime-ai 在**调用模型之前**判断用户输入是否属于动漫话题，明显越界的直接回绝。
+判定规则与设计取舍见 `anime-ai` 的 `TopicScopeGuard`。
+
+**拒答走正常 SSE 流，不是错误**，前端不需要为它写任何新分支：
+
+```
+event:text-delta    data:{"text":"我只能聊动漫相关的话题～…"}   ← 单条，完整文案
+event:usage         data:{"promptTokens":0,"completionTokens":0,"totalTokens":0}
+event:done          data:{"conversationId":"...","finishReason":"SCOPE_REJECTED","model":null}
+```
+
+三处要点：
+
+- **HTTP 200 + 不出现 `event:error`**。拒答是正常业务结果，不是故障 ——
+  用 4xx 的话前端只有一套「出错了」的展示，网关还会把它记成 `status=error` 的埋点。
+- **`finishReason` 是新增取值 `SCOPE_REJECTED`**（原先只有模型给的 `STOP` 等）。
+  它让看板能把「被守卫拦下」与「模型正常回答」分开统计，进而评估命中率与误伤率。
+  前端忽略未知 finishReason，所以这是向后兼容的。
+- **`model` 为 `null`**：这一轮没有调用任何模型。三个 token 字段也都是 0 ——
+  这正是前置拦截省下成本的地方。
+
+边界（重要）：守卫是**保守的**（白名单优先 + 黑名单兜底，拒答需要正面证据），
+不确定时放行。因此像「翻译一下命运石之门」这类不带任何载体词的动漫相关请求会**放行**，
+再由系统提示词那层礼貌拒答 —— 这是**刻意的分层**，不是漏判。
 
 错误（发生在写 SSE 头**之前**，所以是普通 JSON 信封）：
 

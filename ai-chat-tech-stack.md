@@ -122,6 +122,24 @@ event: done          data: {"conversationId":"...","finishReason":"stop"}
 - 前端解析器只按 `\n\n` 切块、按 `event:`/`data:` 取值，遇到未知 event **忽略而不报错**（便于后续加事件）。
 - 服务端在 `finally` 里必须发 `done`（或 `error`）并 `res.end()`，否则前端 `ReadableStream` 永远挂着。
 
+#### 话题范围守卫的复用（2026-09-22）
+
+anime-ai 在调用模型**之前**做一次话题判定（`TopicScopeGuard`），越界时**不调模型**，
+直接用同一套事件流回绝：
+
+```
+event: text-delta    data: {"text":"我只能聊动漫相关的话题～…"}
+event: usage         data: {"promptTokens":0,"completionTokens":0,"totalTokens":0}
+event: done          data: {"conversationId":"...","finishReason":"SCOPE_REJECTED","model":null}
+```
+
+> 关键取舍：**拒答复用正常事件流，不新增事件类型、不用 4xx**。
+> 前端、网关、埋点三处都因此不需要新分支；`SCOPE_REJECTED` 只是 `done.finishReason` 的一个新取值，
+> 而前端本来就忽略未知 finishReason。同理 `model` 为 `null` 表示「本轮无模型参与」。
+>
+> 详细判定规则、误伤防护与分层边界见 `anime-ai/src/main/java/com/animeai/chat/TopicScopeGuard.java`
+> 与 `docs/api-contract.md` §4「话题范围守卫」。
+
 ### 4.3 LLM 供应商（都走 OpenAI 兼容协议，`baseURL` + `apiKey` + `model` 三个环境变量即可切换）
 
 | 供应商 | `baseURL` | 模型示例 | 说明 |
