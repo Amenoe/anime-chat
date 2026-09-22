@@ -1,10 +1,14 @@
 import request from '@/common/request'
 
 /**
- * 管理看板接口。
+ * 管理端接口（数据看板 + 用户管理）。
  *
- * 全部为**全站聚合**数据，后端要求 `role === 'root'`（见 `TrackController.assertRoot`）。
+ * 后端一律要求 `role === 'root'`（`@UseGuards(AuthGuard('jwt'), RootGuard)`）。
  * 普通用户即使拿到这些 URL 也只会得到 403 —— 前端隐藏入口是体验，不是安全边界。
+ *
+ * 响应信封（`{ data, code, message }`）已由 `common/request` 的拦截器解包，
+ * 所以下面这些函数拿到的**直接是业务数据**；出错时 reject 且拦截器已经弹过提示，
+ * 调用方**不要再弹一次**，但必须处理 loading 与「操作后刷新」。
  */
 
 /** 埋点总览 */
@@ -132,5 +136,124 @@ export function getAiTopUsers(days: number, limit = 10) {
   return request.get<IAiTopUser[]>({
     url: '/ai/stats/top-users',
     params: { days, limit },
+  })
+}
+
+// ── 用户管理（`/api/admin/users`）────────────────────────────────
+//
+// 后端对这些接口有**显式的字段白名单**，`password` 等敏感列不会出现在响应里，
+// 所以下面这个 `IAdminUser` 就是全部字段（不要照着 user 实体去补字段）。
+
+/** 角色取值，与后端 `USER_ROLES` 一致 */
+export type AdminUserRole = 'root' | 'user'
+
+/** 用户对象（无 password） */
+export interface IAdminUser {
+  user_id: string
+  username: string
+  nickname: string
+  avatar: string
+  role: AdminUserRole
+  /** ⚠️ **在线状态**（0/1），不是封禁状态 —— 封禁看 `disabled_at` */
+  status: number
+  /** 非空即已封禁 */
+  disabled_at: string | null
+  /** 封禁原因，展示给被封的人 */
+  disabled_reason: string | null
+  create_time: string
+}
+
+/** 列表筛选条件。空值不传（axios 会丢掉 `undefined`，但 `false` 会保留） */
+export interface IAdminUserQuery {
+  keyword?: string
+  role?: AdminUserRole
+  /** `true` 只看已封禁 / `false` 只看正常 */
+  disabled?: boolean
+  page?: number
+  size?: number
+}
+
+export interface IAdminUserList {
+  items: IAdminUser[]
+  total: number
+  page: number
+  size: number
+}
+
+/** 该用户的数据规模，用于删号前把「不可恢复」变成具体数字 */
+export interface IAdminUserStats {
+  conversations: number
+  messages: number
+  events: number
+  animes: number
+}
+
+export interface IAdminUserDetail {
+  user: IAdminUser
+  stats: IAdminUserStats
+}
+
+/** 审计记录。`detail` 只记「改了哪个字段、从什么变成什么」，不含密码/令牌 */
+export interface IAdminAuditLog {
+  id: string
+  actor_user_id: string
+  /** 操作者用户名**快照**（本人被删号后仍能读出是谁干的） */
+  actor_username: string
+  /** 固定取值之一：`user.ban` / `user.role` / `user.password` / `user.delete` / … */
+  action: string
+  target_type: string
+  target_id: string
+  detail: Record<string, unknown> | null
+  ip: string
+  user_agent: string
+  create_time: string
+}
+
+/** 删号结果。`counts` 的键是表名（`ai_message` / `user_anime` / …） */
+export interface IAdminDeleteResult {
+  deleted: boolean
+  counts: Record<string, number>
+}
+
+export function listAdminUsers(params: IAdminUserQuery) {
+  return request.get<IAdminUserList>({ url: '/admin/users', params })
+}
+
+export function getAdminUserDetail(id: string) {
+  return request.get<IAdminUserDetail>({ url: `/admin/users/${id}` })
+}
+
+/** 封禁 / 解封。解封时 `reason` 会被后端忽略 */
+export function setAdminUserBanned(id: string, banned: boolean, reason?: string) {
+  return request.patch<IAdminUserDetail>({
+    url: `/admin/users/${id}/ban`,
+    data: { banned, ...(reason ? { reason } : {}) },
+  })
+}
+
+export function setAdminUserRole(id: string, role: AdminUserRole) {
+  return request.patch<IAdminUserDetail>({
+    url: `/admin/users/${id}/role`,
+    data: { role },
+  })
+}
+
+/** 重置密码。后端会 hash 并**吊销该用户全部会话**（所有设备强制登出） */
+export function resetAdminUserPassword(id: string, newPassword: string) {
+  return request.post<{ reset: boolean }>({
+    url: `/admin/users/${id}/password`,
+    data: { newPassword },
+  })
+}
+
+export function deleteAdminUser(id: string) {
+  return request.delete<IAdminDeleteResult>({ url: `/admin/users/${id}` })
+}
+
+/** 审计记录，倒序 */
+export function getAdminAuditLogs(limit = 30) {
+  return request.get<IAdminAuditLog[]>({
+    url: '/admin/users/audit',
+    params: { limit },
   })
 }
