@@ -55,6 +55,13 @@ export default defineConfig(({ mode }) => {
           manualChunks: {
             // 播放器大依赖独立分包；Element Plus 走按需导入，由 Rollup 自动共享
             player: ['artplayer', 'hls.js'],
+            /*
+             * 图表库只有管理看板用（该路由懒加载），单独分包有两个好处：
+             * 普通用户完全不下载它；升级看板代码时这个包 hash 不变、仍走缓存。
+             * 注意这里的路径必须与 `src/utils/echarts.ts` 的按需引入保持一致 ——
+             * 拆的是同一个模块图，写错包名不会报错，只会静默失效。
+             */
+            charts: ['echarts/core', 'echarts/charts', 'echarts/components', 'echarts/renderers'],
           },
         },
       },

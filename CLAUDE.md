@@ -48,6 +48,7 @@ Scope and subject are both required. Pre-commit hook runs lint-staged (ESLint + 
 ## Tech Stack
 
 Vue 3.5 (Composition API, `<script setup lang="ts">`) + TypeScript 5.8 + Vite 5.4 + Pinia + Vue Router 4 + Element Plus + socket.io-client + Less + pnpm
+（图表：echarts 6，**仅管理看板用**，按需注册见 `src/utils/echarts.ts` + 独立分包见 `vite.config.ts`）
 
 ## Auto-Import System
 
@@ -73,7 +74,7 @@ Two axios instances:
 - `src/common/request/index.ts` — project backend (auth/room/playback/media-source/user-anime). Request interceptor attaches Bearer token, response interceptor unwraps `response.data.data` and shows `ElNotification` on errors.
 - `src/common/request/bangumi.ts` — Bangumi public API (`https://api.bgm.tv`). Response interceptor returns `response.data` directly (no envelope). Requires `User-Agent` header.
 
-API modules in `src/api/` export typed functions: `home.ts` / `search.ts`（Bangumi）、`login.ts`（登录/刷新/登出/用户）、`room.ts`（放映室 HTTP）、`playback.ts`（播放会话/搜源）、`media-source.ts`（数据源订阅）、`user-anime.ts`（追番）。
+API modules in `src/api/` export typed functions: `home.ts` / `search.ts`（Bangumi）、`login.ts`（登录/刷新/登出/用户）、`room.ts`（放映室 HTTP）、`playback.ts`（播放会话/搜源）、`media-source.ts`（数据源订阅）、`user-anime.ts`（追番）、`admin.ts`（管理看板统计，**仅 root**）。
 
 ### Auth（双 token 静默刷新）
 
@@ -95,7 +96,9 @@ Five stores in `src/stores/modules/`, all using Composition API style (`defineSt
 - **home** — anime listing data, calendar (weekly broadcast), detail + episodes from Bangumi API
 - **room** — 放映室：socket 连接、role（host/viewer）、playback_state、消息、在线成员
 - **userAnime** — 追番（wish/watching/done）
-- **route** — static sidebar navigation list
+- **route** — sidebar navigation list；**按 role 动态计算**（`computed`），root 才多出「管理看板」。
+  ⚠️ 消费处必须包一层 `computed`（`App.vue` / `AppRouter.vue` 都是），
+  直接 `const x = routeStore.routeList` 拿到的是**当时的数组快照**，登录/登出后不更新
 
 > 旧纯聊天 `/chat` 路由、`Chat.vue` 与 `chat` store 已于 2026-08-17 下线，放映室统一走 `room`。
 
@@ -107,6 +110,10 @@ HTML5 History mode, all routes lazy-loaded. No route guards — auth checks happ
 
 放映室路由 `/room/:seasonId`（房间业务 key 为 `season_id`，勿与 `session_id` 混淆）。详情页点集 → 列房/创建确认 → 进房。
 
+管理看板 `/admin`（`views/admin/Admin.vue`）。**刻意不加路由守卫**：权限判定在后端
+（非 root 一律 403），前端隐藏入口只是体验；页面自身先查 role，非 root 展示
+「仅管理员可访问」且**不发任何统计请求**。
+
 ### Layout
 
 `App.vue` renders a fixed header (`AppHeader`), collapsible sidebar (`AppAsideBar`), and main content (`AppRouter`). `AppRouter` uses `<keep-alive include="Search">` and directional slide transitions. Sidebar auto-hides at ≤768px via resize listener.
@@ -114,6 +121,19 @@ HTML5 History mode, all routes lazy-loaded. No route guards — auth checks happ
 ### CSS
 
 Less with CSS custom properties for theming (dark theme). Key variables: `--bg-color` (#1e1d2b), `--aside-bg-color` (#2f3042), `--box-bg-color` (#222433), `--primary-color` (rgba(104, 198, 189, 1)), `--font-color` (#fff), `--font-unactive-color`. `src/assets/css/util.less` is globally injected via Vite's Less preprocessor options. `src/assets/css/page.less` provides the shared `.page` class used by all page views. Element Plus style overrides live in `src/assets/css/app.less`.
+
+⚠️ **`.page` 不是全局样式**：`page.less` 要在**每个 view 自己的 `<style scoped>` 里** `@import '~styles/page';`。
+漏了的话 `height:100%` 与 `overflow-y:auto` 都不生效 —— 页面高度变成内容高度，
+被父容器 `.app-container__main` 的 `overflow:hidden` 裁掉且**滚不动**，
+而 type-check / build / lint **全部通过**。新页面最容易踩，务必真实浏览器量一次
+`document.querySelector('.page').clientHeight` 与 `scrollHeight`。
+
+### 图表（echarts）
+
+**只在 `src/utils/echarts.ts` 注册图表类型与组件**（目前：Line/Bar + Grid/Legend/Tooltip + Canvas）。
+忘记注册会 **运行时** 报 `Series xxx is not exists`，而类型检查是过的。
+`AppChart.vue` 是唯一封装：`notMerge: true`（否则切天数后旧系列残留）+ `ResizeObserver`
+（侧边栏折叠/窗口缩放都会改宽度，不 resize 会只画左半边）。
 
 ### Design Language
 

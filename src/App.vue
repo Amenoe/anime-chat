@@ -53,7 +53,12 @@ import { resolveAvatarUrl } from '@/utils/avatar'
 const WEB_NAME = import.meta.env.VITE_APP_TITLE
 const routeStore = useRouteStore()
 const loginStore = useLoginStore()
-const sideList = routeStore.routeList
+/*
+ * 必须包一层 computed，不能写成 `const sideList = routeStore.routeList`：
+ * Pinia 在那个写法下返回的是**当时的数组快照**，routeList 现在是按 role 计算的，
+ * 登录/登出后侧边栏不会跟着变（「管理看板」永远不出现或永远不消失）。
+ */
+const sideList = computed(() => routeStore.routeList)
 const router = useRouter()
 
 const mq = window.matchMedia('(max-width: 768px)')

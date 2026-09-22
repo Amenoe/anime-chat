@@ -8,6 +8,7 @@ export {}
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
     AnimePlayer: typeof import('./../components/Player/AnimePlayer.vue')['default']
+    AppChart: typeof import('./../components/Chart/AppChart.vue')['default']
     AppConfirmHost: typeof import('./../components/AppConfirm/AppConfirmHost.vue')['default']
     AppForm: typeof import('./../components/AppForm/AppForm.vue')['default']
     AvatarCropDialog: typeof import('./../components/AvatarCrop/AvatarCropDialog.vue')['default']
@@ -30,6 +31,8 @@ declare module '@vue/runtime-core' {
     ElRadioGroup: typeof import('element-plus/es')['ElRadioGroup']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
+    ElTable: typeof import('element-plus/es')['ElTable']
+    ElTableColumn: typeof import('element-plus/es')['ElTableColumn']
     ElTabPane: typeof import('element-plus/es')['ElTabPane']
     ElTabs: typeof import('element-plus/es')['ElTabs']
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
