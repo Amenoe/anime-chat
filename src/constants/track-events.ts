@@ -52,6 +52,17 @@ const EVENT_LABELS: Record<string, string> = {
   // ── 管理看板 ──────────────────────────────────────
   'admin.range.change': '切换统计区间',
   'admin.refresh': '刷新看板',
+  'admin.tab.change': '切换管理分区',
+
+  // ── 管理端 · 用户管理 ─────────────────────────────
+  'admin.user.search': '搜索用户',
+  'admin.user.page': '用户列表翻页',
+  'admin.user.ban': '封禁用户',
+  'admin.user.unban': '解封用户',
+  'admin.user.role': '修改用户角色',
+  'admin.user.password': '重置用户密码',
+  'admin.user.delete': '删除用户',
+  'admin.audit.refresh': '刷新操作日志',
 }
 
 /**
