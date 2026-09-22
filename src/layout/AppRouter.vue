@@ -13,15 +13,20 @@ import { useRouteStore } from '@/stores/modules/route'
 import { useRoute } from 'vue-router'
 const route = useRoute()
 const routeStore = useRouteStore()
-const routePaths = routeStore.getRoutePath
+/**
+ * 包 computed 而不是直接取 `routeStore.getRoutePath`：后者是**当时的数组快照**，
+ * 而侧边栏列表现在按 role 动态计算，快照会漏掉「管理看板」这一项，
+ * 表现为进 /admin 时没有上下滑动过渡（深度算不出来）。
+ */
+const routePaths = computed(() => routeStore.getRoutePath)
 const transition = ref('')
 watch(
   () => route.fullPath,
   (toName, fromName) => {
     toName = String(toName)
     fromName = String(fromName)
-    const toDepth = routePaths.findIndex((path) => toName.includes(path))
-    const fromDepth = routePaths.findIndex((path) => fromName.includes(path))
+    const toDepth = routePaths.value.findIndex((path) => toName.includes(path))
+    const fromDepth = routePaths.value.findIndex((path) => fromName.includes(path))
     if (fromDepth === -1 || toDepth === -1) {
       transition.value = ''
     } else {

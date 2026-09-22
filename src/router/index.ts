@@ -33,6 +33,14 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/user/User.vue'),
   },
   {
+    // 管理看板：入口只在侧边栏对 root 展示（见 stores/modules/route.ts），
+    // 但这里**不设路由守卫** —— 权限判定在后端，前端隐藏只是不给普通用户添堵。
+    // 页面自身会先查一次 role，非 root 直接展示「仅管理员可访问」且不发请求。
+    path: '/admin',
+    name: 'Admin',
+    component: () => import('@/views/admin/Admin.vue'),
+  },
+  {
     path: '/detail/:anime_id',
     name: 'Detail',
     component: () => import('@/views/detail/Detail.vue'),
