@@ -1,134 +1,171 @@
 <template>
   <div id="ai" class="page ai-page">
-    <!-- 左：会话列表 -->
-    <aside class="ai-aside" :class="{ 'ai-aside--open': asideOpen }">
-      <div class="ai-aside__head">
-        <span class="ai-aside__title">对话</span>
-        <el-button v-track="'ai.conversation.new'" size="small" :icon="Plus" text @click="onNew">
-          新对话
-        </el-button>
-      </div>
+    <!--
+      未登录：整页只放登录引导，**不渲染对话区**。
+      与个人中心同款做法（`User.vue` 的 `v-if="isLogin"`）：
+      一是后端 AI 接口本来就要求 JWT，渲染出来只会白挨 401 并把界面刷成错误态；
+      二是对话历史属于隐私，没有「先看看再说」的合理形态。
+    -->
+    <div v-if="!isLogin" class="ai-gate">
+      <el-icon class="ai-gate__icon"><MagicStick /></el-icon>
+      <h2 class="ai-gate__title">登录后使用 AI 助手</h2>
+      <p class="ai-gate__desc">AI 助手会读取你的对话历史，并计入每日对话配额，所以需要先登录。</p>
+      <p class="ai-gate__hint">不登录也可以用「搜索」和首页浏览找番</p>
+      <el-button type="primary" size="large" :icon="Key" @click="openLogin"> 立即登录 </el-button>
+    </div>
 
-      <div v-loading="store.conversationsLoading" class="ai-aside__list">
-        <div
-          v-for="item in store.conversations"
-          :key="item.id"
-          v-track="{ event: 'ai.conversation.open', props: { title: item.title } }"
-          class="ai-aside__item"
-          :class="{ active: item.id === store.activeId }"
-          @click="onOpen(item.id)"
-        >
-          <span class="ai-aside__item-title">{{ item.title || '未命名对话' }}</span>
-          <el-icon class="ai-aside__item-del" @click.stop="onRemove(item.id)">
-            <Delete />
-          </el-icon>
+    <template v-else>
+      <!-- 左：会话列表 -->
+      <aside class="ai-aside" :class="{ 'ai-aside--open': asideOpen }">
+        <div class="ai-aside__head">
+          <span class="ai-aside__title">对话</span>
+          <el-button v-track="'ai.conversation.new'" size="small" :icon="Plus" text @click="onNew">
+            新对话
+          </el-button>
         </div>
 
-        <p
-          v-if="!store.conversationsLoading && !store.conversations.length"
-          class="ai-aside__empty"
-        >
-          还没有对话记录
-        </p>
-      </div>
-    </aside>
-
-    <!-- 右：对话区 -->
-    <section class="ai-main">
-      <header class="ai-main__head">
-        <el-button class="ai-main__toggle" :icon="Menu" text @click="asideOpen = !asideOpen" />
-        <span class="ai-main__title">AI 助手</span>
-        <span class="ai-main__hint">推荐 / 寻找番剧</span>
-      </header>
-
-      <el-alert
-        v-if="store.errorMsg"
-        class="ai-main__alert"
-        type="warning"
-        :closable="true"
-        show-icon
-        :title="store.errorMsg"
-        @close="store.clearError()"
-      />
-
-      <div ref="scrollRef" v-loading="store.historyLoading" class="ai-main__scroll">
-        <!-- 空态：给出可点的示例，降低第一次使用门槛 -->
-        <!-- `.view` = 曝光埋点：欢迎区进入视口时上报，用于衡量「有多少人真正打开了对话页」 -->
-        <div
-          v-if="!store.messages.length && !store.historyLoading"
-          v-track.view="'ai.welcome.view'"
-          class="ai-welcome"
-        >
-          <el-icon class="ai-welcome__icon"><MagicStick /></el-icon>
-          <h2 class="ai-welcome__title">番剧助手</h2>
-          <p class="ai-welcome__desc">
-            我可以帮你找番、推荐番。推荐结果里的卡片都来自 Bangumi 实时检索，点击可进详情页。
-          </p>
-          <div class="ai-welcome__chips">
-            <button
-              v-for="s in suggestions"
-              :key="s"
-              v-track="{ event: 'ai.suggest.click', props: { text: s } }"
-              class="ai-chip"
-              @click="onSuggest(s)"
-            >
-              {{ s }}
-            </button>
+        <div v-loading="store.conversationsLoading" class="ai-aside__list">
+          <div
+            v-for="item in store.conversations"
+            :key="item.id"
+            v-track="{ event: 'ai.conversation.open', props: { title: item.title } }"
+            class="ai-aside__item"
+            :class="{ active: item.id === store.activeId }"
+            @click="onOpen(item.id)"
+          >
+            <span class="ai-aside__item-title">{{ item.title || '未命名对话' }}</span>
+            <el-icon class="ai-aside__item-del" @click.stop="onRemove(item.id)">
+              <Delete />
+            </el-icon>
           </div>
+
+          <p
+            v-if="!store.conversationsLoading && !store.conversations.length"
+            class="ai-aside__empty"
+          >
+            还没有对话记录
+          </p>
         </div>
+      </aside>
 
-        <AiMessageItem v-for="m in store.messages" :key="m.id" :message="m" />
-      </div>
+      <!-- 右：对话区 -->
+      <section class="ai-main">
+        <header class="ai-main__head">
+          <el-button class="ai-main__toggle" :icon="Menu" text @click="asideOpen = !asideOpen" />
+          <span class="ai-main__title">AI 助手</span>
+          <span class="ai-main__hint">推荐 / 寻找番剧</span>
+        </header>
 
-      <footer class="ai-main__composer">
-        <el-input
-          v-model="draft"
-          type="textarea"
-          :rows="2"
-          resize="none"
-          maxlength="2000"
-          show-word-limit
-          :disabled="store.streaming"
-          placeholder="问问看，比如「推荐几部高分科幻番」；Enter 发送，Shift+Enter 换行"
-          @keydown.enter="onEnter"
+        <el-alert
+          v-if="store.errorMsg"
+          class="ai-main__alert"
+          type="warning"
+          :closable="true"
+          show-icon
+          :title="store.errorMsg"
+          @close="store.clearError()"
         />
-        <div class="ai-main__actions">
-          <el-button
-            v-if="store.streaming"
-            v-track="'ai.stop'"
-            :icon="VideoPause"
-            @click="store.stop()"
+
+        <div ref="scrollRef" v-loading="store.historyLoading" class="ai-main__scroll">
+          <!-- 空态：给出可点的示例，降低第一次使用门槛 -->
+          <!-- `.view` = 曝光埋点：欢迎区进入视口时上报，用于衡量「有多少人真正打开了对话页」 -->
+          <div
+            v-if="!store.messages.length && !store.historyLoading"
+            v-track.view="'ai.welcome.view'"
+            class="ai-welcome"
           >
-            停止生成
-          </el-button>
-          <el-button
-            v-else
-            v-track="'ai.send.click'"
-            type="primary"
-            :icon="Promotion"
-            :disabled="!draft.trim()"
-            @click="onSend"
-          >
-            发送
-          </el-button>
+            <el-icon class="ai-welcome__icon"><MagicStick /></el-icon>
+            <h2 class="ai-welcome__title">番剧助手</h2>
+            <p class="ai-welcome__desc">
+              我可以帮你找番、推荐番。推荐结果里的卡片都来自 Bangumi 实时检索，点击可进详情页。
+            </p>
+            <div class="ai-welcome__chips">
+              <button
+                v-for="s in suggestions"
+                :key="s"
+                v-track="{ event: 'ai.suggest.click', props: { text: s } }"
+                class="ai-chip"
+                @click="onSuggest(s)"
+              >
+                {{ s }}
+              </button>
+            </div>
+          </div>
+
+          <AiMessageItem v-for="m in store.messages" :key="m.id" :message="m" />
         </div>
-      </footer>
-    </section>
+
+        <footer class="ai-main__composer">
+          <el-input
+            v-model="draft"
+            type="textarea"
+            :rows="2"
+            resize="none"
+            maxlength="2000"
+            show-word-limit
+            :disabled="store.streaming"
+            placeholder="问问看，比如「推荐几部高分科幻番」；Enter 发送，Shift+Enter 换行"
+            @keydown.enter="onEnter"
+          />
+          <div class="ai-main__actions">
+            <el-button
+              v-if="store.streaming"
+              v-track="'ai.stop'"
+              :icon="VideoPause"
+              @click="store.stop()"
+            >
+              停止生成
+            </el-button>
+            <el-button
+              v-else
+              v-track="'ai.send.click'"
+              type="primary"
+              :icon="Promotion"
+              :disabled="!draft.trim()"
+              @click="onSend"
+            >
+              发送
+            </el-button>
+          </div>
+        </footer>
+      </section>
+    </template>
+
+    <!-- 未登录引导里的「立即登录」用；登录成功后由 isLogin 的 watch 接管后续加载 -->
+    <LoginDialog ref="loginRef" @go-register="showRegisterDialog" />
+    <RegisterDialog ref="registerRef" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { Delete, MagicStick, Menu, Plus, Promotion, VideoPause } from '@element-plus/icons-vue'
+import { Delete, Key, MagicStick, Menu, Plus, Promotion, VideoPause } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AiMessageItem from './components/AiMessageItem.vue'
+import LoginDialog from '@/components/Login/LoginDialog.vue'
+import RegisterDialog from '@/components/Login/RegisterDialog.vue'
 import { useAiStore } from '@/stores/modules/ai'
+import { useLoginStore } from '@/stores/modules/login'
 
 defineOptions({ name: 'Ai' })
 
 const store = useAiStore()
+const loginStore = useLoginStore()
 const draft = ref('')
 const asideOpen = ref(false)
 const scrollRef = ref<HTMLElement>()
+
+const isLogin = computed(() => loginStore.token !== '')
+
+const loginRef = ref<InstanceType<typeof LoginDialog>>()
+const registerRef = ref<InstanceType<typeof RegisterDialog>>()
+
+function openLogin() {
+  if (loginRef.value) loginRef.value.dialogVisible = true
+}
+
+function showRegisterDialog() {
+  if (registerRef.value) registerRef.value.dialogVisible = true
+}
 
 const suggestions = [
   '推荐几部高分科幻番',
@@ -138,7 +175,23 @@ const suggestions = [
 ]
 
 onMounted(() => {
+  // 未登录时不发请求：后端必然 401，白白触发一次 token 刷新尝试 + 「请重新登录」弹窗
+  if (!isLogin.value) return
   void store.fetchConversations()
+})
+
+/**
+ * 登录态变化时同步数据。
+ *
+ * - 登录成功：拉会话列表（原来只在 onMounted 拉一次，走登录引导进来就永远是空的）
+ * - 登出：`reset()` 清空，否则同一个标签页换账号后能看到**上一个人的会话**
+ */
+watch(isLogin, (logged) => {
+  if (logged) {
+    void store.fetchConversations()
+  } else {
+    store.reset()
+  }
 })
 
 /** 新内容到达就贴底。用 post flush 等 DOM 更新完再滚，否则算出来的高度是旧的 */
@@ -208,6 +261,45 @@ async function onRemove(id: string) {
   padding: 16px 24px;
   // .page 自带上下透明边框与 padding，这里覆写为左右布局
   overflow: hidden;
+}
+
+/* ── 未登录引导 ───────────────────────────────── */
+.ai-gate {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding: 24px;
+
+  &__icon {
+    font-size: 56px;
+    color: var(--primary-color);
+    opacity: 0.85;
+  }
+
+  &__title {
+    margin: 4px 0 0;
+    font-size: 20px;
+    color: var(--font-color);
+  }
+
+  &__desc {
+    margin: 0;
+    max-width: 420px;
+    font-size: 13px;
+    line-height: 1.7;
+    color: var(--font-unactive-color);
+  }
+
+  &__hint {
+    margin: 0 0 10px;
+    font-size: 12px;
+    color: var(--font-unactive-color);
+    opacity: 0.7;
+  }
 }
 
 /* ── 左：会话列表 ─────────────────────────────── */

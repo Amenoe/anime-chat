@@ -90,15 +90,20 @@ API modules in `src/api/` export typed functions: `home.ts` / `search.ts`（Bang
 
 ### State Management (Pinia)
 
-Five stores in `src/stores/modules/`, all using Composition API style (`defineStore` with setup function):
+Six stores in `src/stores/modules/`, all using Composition API style (`defineStore` with setup function):
 
 - **login** — accessToken / refreshToken / userInfo，持久化 localStorage；`refreshAction` / `logoutAction`
 - **home** — anime listing data, calendar (weekly broadcast), detail + episodes from Bangumi API
 - **room** — 放映室：socket 连接、role（host/viewer）、playback_state、消息、在线成员
 - **userAnime** — 追番（wish/watching/done）
+- **ai** — AI 对话：会话列表、消息、流式状态；`reset()` 见下
 - **route** — sidebar navigation list；**按 role 动态计算**（`computed`），root 才多出「管理看板」。
   ⚠️ 消费处必须包一层 `computed`（`App.vue` / `AppRouter.vue` 都是），
   直接 `const x = routeStore.routeList` 拿到的是**当时的数组快照**，登录/登出后不更新
+
+⚠️ **`ai` store 是单例，登出必须调 `reset()`。** 不清空的话同一个标签页换账号登录后，
+会把**上一个人的会话列表与消息**展示给新用户 —— 属于跨账号数据泄露，不是「没刷新」的体验问题。
+登出后的 `reset()` 调用点见 `views/ai/Ai.vue` 里对 `isLogin` 的 watch。
 
 > 旧纯聊天 `/chat` 路由、`Chat.vue` 与 `chat` store 已于 2026-08-17 下线，放映室统一走 `room`。
 
@@ -113,6 +118,11 @@ HTML5 History mode, all routes lazy-loaded. No route guards — auth checks happ
 管理看板 `/admin`（`views/admin/Admin.vue`）。**刻意不加路由守卫**：权限判定在后端
 （非 root 一律 403），前端隐藏入口只是体验；页面自身先查 role，非 root 展示
 「仅管理员可访问」且**不发任何统计请求**。
+
+AI 助手 `/ai` 同样**不加路由守卫**，而是在页面内做门禁：未登录只渲染 `.ai-gate` 登录引导，
+**不渲染对话区、不发任何 `/api/ai/*` 请求**（`onMounted` 里 `if (!isLogin) return`）。
+后端本来就要求 JWT，所以这是体验与隐私问题而非安全问题（对话历史不该在未登录时可窥）。
+`isLogin` 的 watch 负责登录后拉列表、登出后 `store.reset()`。
 
 ### Layout
 
@@ -134,6 +144,14 @@ Less with CSS custom properties for theming (dark theme). Key variables: `--bg-c
 忘记注册会 **运行时** 报 `Series xxx is not exists`，而类型检查是过的。
 `AppChart.vue` 是唯一封装：`notMerge: true`（否则切天数后旧系列残留）+ `ResizeObserver`
 （侧边栏折叠/窗口缩放都会改宽度，不 resize 会只画左半边）。
+
+**配色一律走 `composables/useChartTheme.ts`，不要在组件里硬编码颜色。**
+ECharts 画在 canvas 上读不到 CSS 变量，所以那份 composable 在运行时
+`getComputedStyle` 读令牌（品牌色改了图表自动跟），并**用 `MutationObserver` 监听
+`<html data-theme>`**。不能只听 `useTheme()` 的 `mode` ref —— CSS 令牌挂在
+`[data-theme]` 选择器上，**DOM 才是唯一事实来源**，任何绕过 `useTheme` 改属性的路径
+（首屏内联脚本、将来的设置页）都会让图表静默停在旧配色（实测：亮色下主色像素命中 0）。
+验证方式是**采样 canvas 像素**统计目标主色的命中数，不要肉眼判断「差不多」。
 
 ### Design Language
 
@@ -165,8 +183,21 @@ Anime/二次元 style with consistent patterns: section headers use `border-left
   401 还会触发 token 刷新重试 —— 这三件事对埋点全是错的。
 - 页面浏览由 `router.afterEach` 统一上报 `page.view`，只记**路由名**不记完整 URL
   （后者会带业务 id，容易变成事实上的用户行为明细）。
-- 事件名用点号分命名空间：`page.view` / `ai.send` / `ai.card.click`。
+- 事件名用点号分命名空间：`page.view` / `ai.*` / `search.*` / `admin.*`。
   后端事件（如 `ai.chat`）也进同一张 `track_event` 表 —— 前后端埋点共用一条查询路径。
+- **中文名映射在 `src/constants/track-events.ts`**（`eventLabel(event, page)`）。
+  看板不直接摆内部代号；`page.view` 的文案由 `page` 拼出（`Home` → 首页访问），
+  所以是**函数**不是纯字典。表里没有的事件名**原样显示**而不是「未知事件」——
+  这样新加埋点时会一眼看出缺映射。**加埋点要同步这张表。**
+- 看板的「AI 使用率」依赖 `search.submit`（手动搜索次数）。它不是纯展示字段，
+  **漏报会让指标静默失真**，改搜索页时务必一起验证。
+
+⚠️ **不要把「是否计数」做成处理函数的参数，然后用 `@click="onSearch"` 绑定。**
+踩过的坑：模板里写 `@click="onSearch"` 时 Vue 会把**事件对象**当第一个实参传进去，
+所以 `onSearch(fromSortChange = false)` 里的 `fromSortChange` 拿到的是 `MouseEvent`（真值），
+`search.submit` 被静默跳过 —— **看板上「手动搜索次数」永远 0、「AI 使用率」永远 100%，
+而且完全不报错**。正解是拆成两个入口函数（`onSearch` 计数 / `runSearch` 不计数），
+而不是在函数里加判断。教训：这类 bug 只有核对**数据库真实行**才暴露，界面上一切正常。
 
 ⚠️ **`v-track` 的点击监听注册在捕获阶段（capture），不要改成冒泡。**
 踩过的坑：chip 上同时有 `@click="onSuggest"` 与 `v-track`。冒泡时 Vue 的处理器先执行，

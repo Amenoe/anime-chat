@@ -32,27 +32,9 @@ export type EChartsOption = ComposeOption<
   | TooltipComponentOption
 >
 
-/**
- * 看板配色：与全局 CSS 变量（`--primary-color` 等）保持一致。
- *
- * ECharts 画在 canvas 上，**读不到** CSS 变量，只能在这里硬编码一份；
- * 改主题色时这里要跟着改，否则图表会与旁边的卡片脱色。
+/*
+ * 图表配色**不在这里** —— 见 `composables/useChartTheme.ts`。
+ * 颜色必须跟随主题（亮/暗）并且从 CSS 变量读，硬编码色表会在亮色下糊成一片。
  */
-export const CHART_COLORS = {
-  primary: 'rgba(104, 198, 189, 1)',
-  warn: 'rgba(240, 173, 78, 1)',
-  danger: 'rgba(245, 108, 108, 1)',
-  purple: 'rgba(150, 130, 230, 1)',
-  font: 'rgba(255, 255, 255, 0.85)',
-  fontDim: 'rgba(255, 255, 255, 0.45)',
-  split: 'rgba(255, 255, 255, 0.08)',
-} as const
-
-/** 深色底下的通用坐标轴/网格样式，各图表展开复用 */
-export const AXIS_BASE = {
-  axisLine: { lineStyle: { color: CHART_COLORS.split } },
-  axisLabel: { color: CHART_COLORS.fontDim, fontSize: 11 },
-  splitLine: { lineStyle: { color: CHART_COLORS.split } },
-} as const
 
 export default echarts
