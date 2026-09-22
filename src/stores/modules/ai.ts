@@ -93,6 +93,25 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   /**
+   * 清空全部本地状态（登出 / 切换账号时调）。
+   *
+   * 必须清干净的原因：store 是**单例**，不重置的话同一个标签页换账号登录后，
+   * 会把上一个人的会话列表与消息原样展示给新用户 —— 这不是「数据没刷新」的
+   * 体验问题，是**跨账号的数据泄露**。
+   * 先 `stop()` 是为了掐掉还在流的那次请求，否则它会把上一个人的回答
+   * 继续写进已经清空的 messages 里。
+   */
+  function reset() {
+    stop()
+    conversations.value = []
+    activeId.value = ''
+    messages.value = []
+    errorMsg.value = ''
+    conversationsLoading.value = false
+    historyLoading.value = false
+  }
+
+  /**
    * 发一轮消息。
    *
    * 先乐观插入用户消息与一个空的 assistant 占位，再靠 SSE 回调往里追加文本，
@@ -215,6 +234,7 @@ export const useAiStore = defineStore('ai', () => {
     fetchConversations,
     openConversation,
     newConversation,
+    reset,
     send,
     stop,
     removeConversation,

@@ -15,9 +15,10 @@ export interface ITrackOverview {
   today_events: number
 }
 
-/** 事件量排行的一项 */
+/** 事件量排行的一项。`page` 由后端按 (event, page) 分组带出 */
 export interface ITrackTopEvent {
   event: string
+  page: string | null
   count: number
   users: number
 }
@@ -56,13 +57,6 @@ export interface IAiDaily {
   avg_latency_ms: number
 }
 
-/** 工具使用分布的一项；`tools` 是**组合**字符串，如 `browse_anime,search_anime` */
-export interface IAiToolStat {
-  tools: string
-  requests: number
-  calls: number
-}
-
 /**
  * 用量 TOP 用户。
  * `username`/`nickname` 由后端 LEFT JOIN `user` 带出；
@@ -74,6 +68,37 @@ export interface IAiTopUser {
   nickname: string | null
   requests: number
   tokens: number
+}
+
+/**
+ * AI 助手的**访问量 / 消耗 / 使用率**（看板核心指标）。
+ *
+ * 口径由后端统一定义（`AiService.statsEngagement`），前端只负责展示 ——
+ * 尤其 `ai_rate` 是跨功能口径，散在前端拼装迟早会和别处对不上。
+ */
+export interface IAiEngagement {
+  // 访问量
+  page_views: number
+  page_users: number
+  chat_requests: number
+  chat_users: number
+  // 消耗
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  /** 单次对话平均 token */
+  tokens_per_request: number
+  // 推荐转化
+  card_clicks: number
+  /** 卡片点击 / 对话次数（%），一轮可能返回多张卡，**可能大于 100** */
+  card_click_rate: number
+  // 与手动搜索对比
+  search_count: number
+  search_users: number
+  search_card_clicks: number
+  search_card_click_rate: number
+  /** AI 对话次数 /（AI + 手动搜索次数）（%），即「找番方式里 AI 占多少」 */
+  ai_rate: number
 }
 
 export function getTrackOverview(days: number) {
@@ -95,12 +120,12 @@ export function getAiOverview() {
   return request.get<IAiOverview>({ url: '/ai/stats/overview' })
 }
 
-export function getAiDaily(days: number) {
-  return request.get<IAiDaily[]>({ url: '/ai/stats/daily', params: { days } })
+export function getAiEngagement(days: number) {
+  return request.get<IAiEngagement>({ url: '/ai/stats/engagement', params: { days } })
 }
 
-export function getAiTools(days: number) {
-  return request.get<IAiToolStat[]>({ url: '/ai/stats/tools', params: { days } })
+export function getAiDaily(days: number) {
+  return request.get<IAiDaily[]>({ url: '/ai/stats/daily', params: { days } })
 }
 
 export function getAiTopUsers(days: number, limit = 10) {
