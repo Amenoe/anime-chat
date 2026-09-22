@@ -265,16 +265,44 @@ toolCalls / toolNames / latencyMs / firstTokenMs / status / finishReason / candi
 | `GET /api/track/stats/overview?days=` | 事件总量、独立用户、事件类型数、今日量 |
 | `GET /api/track/stats/top-events?days=&limit=` | 事件量排行 |
 | `GET /api/track/stats/daily?days=` | 按天趋势（含匿名数） |
-| `GET /api/ai/stats/overview` | AI：请求数、成功/错误/中途放弃、token、平均延迟与首字延迟 |
+| `GET /api/ai/stats/overview` | AI：请求数、成功/错误/中途放弃、token、平均延迟与首字延迟（**全时段**，不吃 `days`） |
 | `GET /api/ai/stats/daily?days=` | AI：按天趋势 |
 | `GET /api/ai/stats/tools?days=` | 工具使用分布（按调用组合分组） |
-| `GET /api/ai/stats/top-users?days=&limit=` | 用量最高的用户 |
+| `GET /api/ai/stats/top-users?days=&limit=` | 用量最高的用户，含 `username`/`nickname` |
 
 非 `role = 'root'` 一律 403。`days` 收敛到 1–90，`limit` 上限 100。
+前端页面对应 `/admin`（侧边栏入口只对 root 展示）。
+
+**响应字段一律是数字，不会出现 `null`。** 零行时 `COUNT` 天然返回 0，但
+`SUM(...)` 返回 **NULL** —— 所以每个 `SUM` 都包了 `COALESCE(...,0)`
+（漏包过，看板拿到一串 null）。而 `toNumbers()` 是**故意跳过 null** 的：
+它只负责「字符串→数字」，不负责补默认值。
+
+**`top-users` 的 `username`/`nickname` 来自 `LEFT JOIN user`**，用 LEFT 而非 INNER：
+`user_id` 可为空（匿名埋点），INNER 会把这些行吞掉导致排行总数对不上。
+两种情况会返回 `null`，前端退化成短 id 展示：匿名埋点、用户已注销。
 
 ⚠️ 数值列在应用层用 `core/utils/sql.ts` 的 `toNumbers()` 收敛 ——
 TypeORM 的 mysql 驱动开了 `bigNumberStrings`，COUNT/SUM 回来是字符串，
 在 SQL 里包 `CAST(... AS SIGNED)` **无效**（实测）。
+
+⚠️ `ai.chat` 的 `props.toolNames` 落库是 **JSON 数组**（如 `["browse_anime"]`），
+`props->>'$.toolNames'` 取出来**带方括号和引号**，不是逗号分隔的裸名字。
+`statsTools` 用多层 `REPLACE` 剥掉 JSON 语法后再分组。
+保留数组写法是故意的（将来可用 `JSON_CONTAINS` 查「谁调用过某工具」），
+所以修的是读侧不是写侧。
+
+### 授予管理员
+
+`user.role` 默认 `'user'`，**没有任何接口能改它**（避免提权面），只能改库：
+
+```sql
+UPDATE `user` SET role = 'root' WHERE username = '你的用户名';
+```
+
+改完需**重新登录**：`userInfo`（含 role）缓存在 localStorage，不重登看不到
+侧边栏的「管理看板」入口。前端隐藏入口**不是安全边界**，真正的判定在后端
+`assertRoot`，直接敲 `/admin` 会被 403。
 
 ## 6. 建表策略
 

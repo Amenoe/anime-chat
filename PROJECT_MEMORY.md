@@ -124,12 +124,50 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 13 | P1 | JWT 双 token + 前端静默刷新 | ✅ 2026-09-15 | accessToken 2h / refreshToken 30d 落库轮换吊销；前端 401 单次重试 + 并发合并；真实接口验收 24/24 |
 | 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端 `CLAUDE.md`；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
 | 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | ✅ 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试）；**NestJS 网关**✅（`3858179`）；**前端对话界面**✅（`aa65f50`，分支 `feat/ai-chat-ui` 未合并）。浏览器实测 11/11：流式渲染、Markdown、卡片、点按跳详情、刷新恢复；**用户头像同步 + 卡片与推荐对齐 + 埋点体系**✅ 2026-09-21（已合入 main 并推送） |
-| 17 | P2 | 管理员数据看板（展示埋点与 AI 用量） | ⬜ | **数据通道已就绪**：`/api/track/stats/*`、`/api/ai/stats/*`（仅 root）。缺前端页面 |
+| 17 | P2 | 管理员数据看板（展示埋点与 AI 用量） | ✅ 2026-09-22 | 前端 `/admin` + 侧边栏按 role 动态入口；图表用 echarts 6（按需注册 + 独立分包，Admin 101KB / charts 549KB 均为懒加载）。顺带修出 3 个后端统计 bug（见 §4）。**初始没有任何 root 账号**，需手工 `UPDATE user SET role='root'`（见 `api-contract.md` §5） |
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
 
 ---
 
 ## 4. 修复记录
+
+### 2026-09-22 · 管理看板：顺带查出 3 个统计 bug + 1 个前端渲染 bug
+
+做 #17 看板时，为了「看板显示的数必须是真的」逐个核对了统计口径，结果查出：
+
+1. **零数据时 `SUM` 返回 `null` 而不是 0**（`ai.service.ts` / `track.service.ts` 的 `statsOverview`）。
+   `COUNT` 天然返回 0，但 `SUM(...)` 在零行时是 NULL；当时只有 token 那几个 `SUM` 包了
+   `COALESCE(...,0)`，`ok/error/aborted/today_requests/today_events` 全漏了。
+   而 `toNumbers()` 是**故意跳过 null** 的（它只做「字符串→数字」，不补默认值），
+   于是前端拿到一串 null。**修法是在 SQL 里 COALESCE，而不是让前端兜底** ——
+   接口契约说好是数字，就不该把 null 漏出去。
+2. **`statsTools` 把 JSON 数组当逗号分隔串分组**（`ai.service.ts`）。
+   写侧存的是数组（`toolNames: [...toolNames]`），`props->>'$.toolNames'` 取出来是
+   `["browse_anime"]`（MySQL 序列化多元素时带空格：`["a", "b"]`），
+   而那条 SQL 的注释和 `GROUP BY` 都假设是 `browse_anime,search_anime` 这种裸名字 ——
+   看板上工具名列显示成 `["browse_anime"]`。用多层 `REPLACE` 剥掉方括号引号。
+   **修读侧而不是写侧**：数组能支持将来 `JSON_CONTAINS` 查「谁调用过某工具」，拍平就查不了了。
+3. **`top-users` 只返回 UUID**，看板读不了。`LEFT JOIN user` 带出 `username/nickname`。
+   必须 LEFT：匿名埋点 `user_id` 为空，INNER 会把它们吞掉导致排行总数对不上（实测验证过）。
+4. **前端 `Admin.vue` 漏了 `@import '~styles/page'`** —— `.page` 不是全局样式，
+   每个 view 各自引入。漏了以后 `height:100%` 与 `overflow-y:auto` 都不生效，
+   页面高度变成内容高度（实测 1347px），被父容器 `.app-container__main` 的
+   `overflow:hidden` 直接裁掉且**滚不动**，看板下半部分根本够不着。
+   type-check / build / lint **全部通过**，只有真实浏览器量 `clientHeight` 才暴露。
+   → UI 改动必须 headless Chrome 实测，别凭类型检查收工。
+
+**验证**：后端 tsc/build/prettier 全绿；前端 type-check/build-only/lint/prettier 全绿；
+headless Chrome 双场景 —— root 侧边栏出现「管理看板」且 4 个 canvas 均实际绘制
+（抽样非透明像素）、TOP 用户表显示 `探针 @probeadmin`；普通账号侧边栏无入口、
+直敲 `/admin` 只显示「仅管理员可访问」且 0 个 canvas；**无 console error / 未捕获异常**。
+协议侧：非 root 访问 7 个统计接口全部 403，无 token 401。
+
+**另发现（未修，非本任务范围）**：`pnpm build`（`run-p type-check build-only`）
+在 pnpm 10 下**必然失败** —— `package.json` 的 `config.commitizen` 会被当成 CLI 选项
+传给子进程（`ERROR Unknown option: 'anime-chat-client:commitizen_path'`）。
+已用 main 的原始 `package.json` 复现，确认**与本次改动无关且长期存在**。
+验证过的解法：把该配置挪到 `.czrc`（内容 `{"path":"@commitlint/cz-commitlint"}` → 实测 `pnpm build` EXIT=0）。
+项目约定的验收命令是 `pnpm type-check && pnpm build-only`（不走 `pnpm build`），故暂未改动提交工具链。
 
 ### 2026-09-21 · 埋点体系：AI 明细表改造成通用事件流
 
