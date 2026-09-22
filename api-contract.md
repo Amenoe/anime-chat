@@ -366,10 +366,96 @@ UPDATE `user` SET role = 'root' WHERE username = '你的用户名';
 
 改完需**重新登录**：`userInfo`（含 role）缓存在 localStorage，不重登看不到
 侧边栏的「管理看板」入口。前端隐藏入口**不是安全边界**，真正的判定在后端
-`assertRoot`，直接敲 `/admin` 会被 403。
+`RootGuard`，直接敲 `/admin` 会被 403。
 
 ## 6. 建表策略
 
 - 开发：TypeORM `synchronize: true` 自动同步
 - 生产：`synchronize` 需关掉，用 `docs/schema.sql` 手工建表或迁移
 - **改实体后必须同步更新 `schema.sql`**（生产建库依赖它）
+
+## 7. 管理端（2026-09-22 新增）
+
+`src/admin/` 模块。**每个接口都挂 `@UseGuards(AuthGuard('jwt'), RootGuard)`，两个都挂、顺序不能换** ——
+没有 JWT 守卫时 `req.user` 恒为 `undefined`，连管理员都会被 `RootGuard` 判成 403
+（本项目真实踩过两次，所以现在抽成一个守卫：挂错一次就立刻暴露，而不是各 controller 各写一份 `assertRoot` 各漏各的）。
+
+### 7.1 用户管理
+
+| 方法 | 路径 | 请求 | 响应 |
+| --- | --- | --- | --- |
+| GET | `/api/admin/users` | `keyword?` `role?` `disabled?` `page?` `size?` | `{ items, total, page, size }` |
+| GET | `/api/admin/users/audit` | `limit?` | 审计记录数组（倒序，上限 200） |
+| GET | `/api/admin/users/:id` | — | `{ user, stats: { conversations, messages, events, animes } }` |
+| PATCH | `/api/admin/users/:id/ban` | `{ banned: boolean, reason?: string }` | 同详情 |
+| PATCH | `/api/admin/users/:id/role` | `{ role: 'root' \| 'user' }` | 同详情 |
+| POST | `/api/admin/users/:id/password` | `{ newPassword: string }` | `{ reset: true }` |
+| DELETE | `/api/admin/users/:id` | — | `{ deleted: true, counts }` |
+
+⚠️ **路由顺序**：`audit` 必须在 `:id` **之前**声明，否则 `/admin/users/audit` 会被 `:id` 吃掉
+（然后报「用户不存在」）。
+
+用户对象字段是**显式白名单**，**不含 `password`**：`password` 目前靠实体上的 `@Exclude()` +
+`ClassSerializerInterceptor` 保护，而那个拦截器只挂在 `UserController` 上 ——
+新 controller 忘了挂就漏密码，所以这里显式 `select`，比「记得挂拦截器」可靠。
+
+`keyword` 同时匹配 `username`/`nickname`，**LIKE 的 `%` 与 `_` 已转义**（转义符用 `!`，
+因为反斜杠在 JS 和 SQL 里要各转一层、极易写错）；不转义的话输入一个 `%` 就等于拉全表。
+
+### 7.2 封禁（新列 + 即时失效）
+
+`user` 表新增两列：`disabled_at datetime NULL`（**NULL 即正常**，非空既判真假又记录时间）、
+`disabled_reason varchar(255)`。
+
+**刻意不复用 `status`**：那是**在线状态**（登录置 1、`User.vue` 离开置 0）。
+复用会让「用户关掉页面」显示成「已封禁」。
+
+**即时失效靠三个拦截点，缺一不可**：
+① `JwtStrategy.validate` 查到 user 后判 `disabled_at`（该方法**本就每请求查库**，
+所以是免费的）；② `AuthService.login` 在**签发 token 之前**拒绝（否则能登录成功但每请求 401，
+用户无从理解）；③ `AuthService.refresh` 校验后先 `revokeAllForUser` 再抛。
+判定集中在 `AuthService.assertNotDisabled()` 一处，避免两处漂移。
+
+**不需要 accessToken 黑名单**，也不要为「可吊销」把 accessToken 落库。
+
+**有意保留的缺口**：被封用户揣着未过期 accessToken 打 `POST /api/track`，会因 `OptionalJwtGuard`
+丢弃 err 而被记成**匿名**。不改的理由：埋点必须对「token 过期的访客」也保持匿名可用
+（见 §5），改 401 会误伤正常访客。业务接口全走必需的 `AuthGuard('jwt')`，已被拦。
+
+**防自锁**：禁止封自己；禁止封禁/降级**最后一个未封禁的 root**。
+后者只在**真的会减少**可用 root 时才生效（目标本来就已封禁时跳过），
+否则「封一个已封的 root」会被误判成「最后一个」而拒绝。
+
+### 7.3 删号级联
+
+`AccountCleanupService.purge(userId)` 是**唯一实现**，「用户自删」（`DELETE /api/user/:id`）与
+「管理员删号」（`DELETE /api/admin/users/:id`）共用它 —— 原先只有 `UserService.delete` 删
+`user` 一行，留下 8 张表孤儿；根因不是「忘了写 DELETE」，而是同一个语义有两份实现。
+现在 `UserService.delete` 已**删除**，不存在「有人调了那个裸删方法」的可能。
+
+事务内按「叶子 → 主体」硬删：
+`ai_message → ai_conversation → ai_usage → user_anime → media_source → refresh_token
+→ group_user_map → playback_session → user`
+
+三个**明确保留**（不是遗漏）：`group`/`group_message`（房间是多人共享上下文；但用户正主持的
+房间会先走 `RoomService.destroyRoom` 销毁，否则房主指向不存在的用户）、`track_event`
+（埋点不属于个人数据，已删用户的行会退化成 LEFT JOIN 能识别的「已注销」）、
+MinIO 头像（best-effort，失败只记日志不阻断 —— 账号都删了，为一张图回滚没意义）。
+
+### 7.4 提权红线
+
+- **绝不把 `role` 加进 `UpdateUserDto`。** `PATCH /api/user/:id` 的判定是「本人**或** root」，
+  一旦 `role` 可写，**任何登录用户都能把自己提成 root**。
+  已加**编译期断言**：该 DTO 上一旦出现 `role`/`username` 就编译失败。
+  运行时也有兜底：全局 `ValidationPipe` 开了 `forbidNonWhitelisted`，多传 `role` 直接 400。
+- 改角色只走 `/api/admin/users/:id/role`。
+- **禁止修改自己的角色**（含自我降级，会立刻失去管理能力）。
+- 重置密码：显式 `bcrypt.hashSync`（`@BeforeInsert` 只在插入时生效，直接 update 明文会存进去）、
+  重置后 `revokeAllForUser` 强制全设备重登、**响应与审计都不回显密码**。
+
+### 7.5 审计
+
+写操作一律写 `admin_audit_log`，**且审计失败会让操作一起失败**（与埋点相反，见 `schema.sql` 注释）。
+`action` 取值：`user.ban` / `user.role` / `user.password` / `user.delete`
+（后续还有 `ai.read` / `track.export` / `config.update`）。
+`detail` 记「改了什么、从什么变成什么」，**绝不写密码或令牌明文**。

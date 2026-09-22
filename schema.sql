@@ -9,7 +9,10 @@ CREATE TABLE IF NOT EXISTS `user` (
   `nickname` varchar(255) NOT NULL,
   `avatar` varchar(255) NOT NULL DEFAULT '',
   `role` enum('root','user') NOT NULL DEFAULT 'user',
+  -- status 是**在线状态**（登录 1 / 离开 0），不是封禁位。封禁看 disabled_at
   `status` tinyint NOT NULL DEFAULT 0,
+  `disabled_at` datetime DEFAULT NULL,
+  `disabled_reason` varchar(255) NOT NULL DEFAULT '',
   `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`user_id`),
   UNIQUE KEY `IDX_user_username` (`username`)
@@ -229,4 +232,31 @@ CREATE TABLE IF NOT EXISTS `track_event` (
   PRIMARY KEY (`id`),
   KEY `IDX_track_event_event_time` (`event`,`create_time`),
   KEY `IDX_track_event_user_time` (`user_id`,`create_time`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ─── 管理员审计（2026-09-22 新增）────────────────────────────────
+-- **刻意不复用 track_event**，三条硬性理由：
+--  1. TrackService.track() 的契约是「吞掉所有异常」（埋点失败不能影响业务），
+--     而审计必须反过来 —— 留不下痕就不许操作成功。同一个方法满足不了两者。
+--  2. 审计要与业务改动**同事务**（改角色成功但审计失败 = 不知道是谁提的权）；
+--     埋点是旁路异步写，没有事务语义。
+--  3. 检索维度与保留期不同：审计按 actor/action/target 查且长期保留，
+--     埋点按事件/时间聚合且可定期清理。混在一起两边索引都做不好。
+-- actor_username 存**快照**：操作者本人被删号后，记录仍要能读出「是谁干的」。
+-- detail 绝不写密码/令牌明文。
+CREATE TABLE IF NOT EXISTS `admin_audit_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `actor_user_id` char(36) NOT NULL,
+  `actor_username` varchar(255) NOT NULL,
+  `action` varchar(64) NOT NULL,
+  `target_type` varchar(32) NOT NULL,
+  `target_id` varchar(64) NOT NULL DEFAULT '',
+  `detail` json DEFAULT NULL,
+  `ip` varchar(64) NOT NULL DEFAULT '',
+  `user_agent` varchar(255) NOT NULL DEFAULT '',
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`id`),
+  KEY `IDX_admin_audit_actor_time` (`actor_user_id`,`create_time`),
+  KEY `IDX_admin_audit_action_time` (`action`,`create_time`),
+  KEY `IDX_admin_audit_target` (`target_type`,`target_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

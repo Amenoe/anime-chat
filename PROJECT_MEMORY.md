@@ -128,11 +128,65 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
 | 18 | P1 | 看板 v2：亮色适配 / 事件中文化 / 指标重构 / AI 登录门禁 | ✅ 2026-09-22 | 新增 `stats/engagement`（访问量·消耗·使用率）；`CHART_COLORS` 改为运行时读 CSS 变量（图表终于跟随主题）；事件中文名映射 `constants/track-events.ts`；AI 页未登录不再发请求。**顺带修出 `search.submit` 从未上报**（见 §4） |
 | 19 | P1 | anime-ai 话题范围守卫（只聊动漫） | ✅ 2026-09-22 | 提示词加固 + 输入前置拦截，**fail-open**。拒答走正常 SSE、`finishReason=SCOPE_REJECTED`、不计为错误。71 项纯函数单测 |
-| 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | ⬜ | **规划已完成**：见 `admin-roadmap.md`（含分期、接口设计、风险边界）。⚠️ 规划期间查出 3 个既有问题：`user.status` 是在线状态不能当封禁位；`AnimeController` 零守卫 + `AnimeService` 写操作是桩；`GET /api/user` 任何登录用户可枚举全表 |
+| 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | 🔄 2026-09-22 | 见 `admin-roadmap.md`。**用户管理 + 安全收口已完成**（见 §4 修复记录）：封禁列与三处即时失效、`RootGuard` 抽取、`admin/users` 全套接口、级联删号、审计表；已删越权枚举 `GET /api/user` 与整个停用的番剧 HTTP 子系统。**剩余**：AI 会话审阅、埋点明细查询/导出、系统配置、番剧数据（后者的正解是「删」，见 roadmap §8） |
 
 ---
 
 ## 4. 修复记录
+
+### 2026-09-22 · 管理端落地：封禁、用户管理、级联删号、安全收口
+
+按 `admin-roadmap.md` 的 P0/P1 实施，五件事：
+
+1. **封禁用新列 `disabled_at`，不复用 `status`**。`status` 是**在线状态**（登录置 1、
+   `User.vue` 离开置 0）—— 复用会让「关掉页面」显示成「已封禁」。
+   即时失效靠**三个拦截点**（`JwtStrategy.validate` / `login` / `refresh`），
+   判定集中在 `AuthService.assertNotDisabled()` 一处。
+   **不需要 accessToken 黑名单**：`validate` 本就每请求查库，多判一个字段是免费的。
+2. **抽公共 `RootGuard` 替掉两份 `assertRoot`**。原先 `track` 与 `ai` 各写一份，
+   而且都踩过「漏挂 JWT 守卫 → 连管理员都 403」的坑。抽成守卫后，
+   挂错一次就立刻暴露，不必每个 controller 各漏各的。
+3. **删掉越权枚举接口 `GET /api/user`**：它只要求「登录」不要求 root，
+   等于任何注册用户能枚举全站账号（含 `role`，连谁是管理员都暴露），而前端全仓从未调用。
+   规划文档原本建议「收紧为仅 root」，但管理端列表已由 `/api/admin/users`
+   （分页 + 关键词 + 字段白名单）承担，保留一个无分页的 root-only 副本只是死代码 → 选择删除。
+4. **删掉整个停用的番剧 HTTP 子系统**（`AnimeController`/`AnimeService`/`AnimeModule`/DTO/`AnimeEp` 实体）。
+   核查依据：`UseGuards` 出现 0 次（无鉴权）、写操作是 `return 'This action adds a new anime'`
+   这类脚手架桩、`anime`/`anime_ep` 两张表 0 行、前端零调用。
+   ⚠️ **桩在 `AnimeService` 而不是 `AnimeController`**（controller 只是转发）——
+   规划文档这里写错了层，已修正，否则下一个人会照着 controller 找半天。
+   `Anime` 实体**保留**：`chat.gateway` 那个已标 deprecated 的 `addGroup` 路径还在用它取标题兜底。
+5. **修掉 `UserService.delete` 的孤儿数据**（8 张表）。根因不是「忘了写 DELETE」，
+   而是**同一个语义有两份实现**（用户自删 vs 管理删号）必然漂移 → 抽
+   `AccountCleanupService.purge`，并**直接删掉 `UserService.delete` 这个裸删方法**，
+   从结构上消灭「有人调了它」的可能。
+
+**过程中踩到/查出的三个问题**：
+
+- **DI 环**：`UserService` 被 `UserModule` 与 `AuthModule` **各提供一份**（既有重复），
+  给它加 `AccountCleanupService` 依赖后 `AuthModule` 那份解析不出来。
+  解法不是把 Room/Storage 也拖进 AuthModule，而是**去掉 `UserService` 对该服务的依赖** ——
+  把级联调用上移到 `UserController.delete`，`UserService.delete` 整个删掉。
+  教训：依赖注入报错往往在提示「结构问题」，顺着它改结构比加 import 更好。
+- **防自锁判定的假阳性**：`countActiveRoots() <= 1` 只数未封禁的 root，
+  于是「封一个**已经封了**的 root」必然命中 ≤1 而被拒 —— 可这个操作根本不减少可用管理员。
+  加 `target.disabled_at == null` 作为前提，只在**真的会减少**时才拦。
+- **验收脚本自己会留垃圾**：产品行为是**有意保留** `track_event`（埋点不属个人数据），
+  于是脚本跑完在开发库里留下孤儿埋点行。脚本的断言验证保留行为、
+  但**清理阶段必须把脚本自己造的数据删掉** ——「产品会留下这些行」不等于「可以往库里留垃圾」。
+
+**验证**：新增可重复执行的 `scripts/admin-e2e.mjs`（**47 项断言全绿**），覆盖
+非 root 越权（7 个端点全 403 + 匿名 401）、列表无 `password` 字段、**LIKE 通配符转义**
+（`%%%` 不返回全表）、封禁三处拦截（旧 accessToken / 登录 / 刷新全部拒绝）、
+解封恢复、改角色、**自锁防护**（封自己、改自己角色均 400）、重置密码与会话吊销、
+**提权红线**（`PATCH /user/:id` 传 `role` → 400 且库里未变）、级联删号后
+**9 张表零残留**、审计四类动作齐全且**不含密码明文**、`from/to` 与 actor 快照完整。
+同时回归 `scripts/auth-e2e.mjs`（24 项全绿）。脚本自清理后库里 `orphan=0`、用户数不变。
+
+**未处理（已记录，非本次范围）**：登录失败的错误信息会区分「不存在此用户」与「密码错误」，
+等于**用户名枚举**；且密码错误返回 **400** 而非 401。这是既有行为，
+改成统一文案是「可用性 vs 枚举防护」的产品取舍，留给用户决定。
+脚本里已把断言写成「登录失败且无 token」而不是硬编码状态码，避免把既有行为当回归。
 
 ### 2026-09-22 · 看板 v2：亮色适配、事件中文化、指标重构、AI 范围守卫
 

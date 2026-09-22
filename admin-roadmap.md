@@ -1,9 +1,20 @@
 # 管理员功能路线（Admin Roadmap）
 
-> 状态：规划待确认（2026-09-22）｜前置：只读看板 `/admin` 已上线（`PROJECT_MEMORY.md` #17）
+> 状态：**P0/P1 部分已实施**（2026-09-22）｜前置：只读看板 `/admin` 已上线（`PROJECT_MEMORY.md` #17）
 > 契约照 `api-contract.md`：前缀 `api`、成功走 `TransformInterceptor` 信封、错误走 `HttpExceptionFilter`
 > 且带真实状态码、DTO 必须显式声明每个可收字段（`forbidNonWhitelisted` 传未声明字段直接 400）
 > 本文只写**管理员增量**，不改用户侧已有契约。表结构变动最终要同步进 `docs/schema.sql`
+>
+> **实施进度**（详细验证见 `PROJECT_MEMORY.md` §4 的「管理端落地」条）：
+> - ✅ §2.2 审计表 `admin_audit_log`、§3.1 封禁（新列 + 三处即时失效）、
+>   §3.2 级联清理（`AccountCleanupService`）、§3.3 越权枚举处置、§4 用户管理
+> - ✅ 额外完成：抽公共 `RootGuard` 替换两份 `assertRoot`；删除整个停用的番剧 HTTP 子系统（§8 方案 A）
+> - ⬜ §5 AI 会话审阅、§6 埋点明细查询与导出、§7 系统配置
+> - ⚠️ **§3.3 的处置方式与原文不同**：原文建议把 `GET /api/user` 收紧为仅 root，
+>   实际选择**直接删除** —— 管理端列表已由 `/api/admin/users`（分页 + 关键词 + 字段白名单）承担，
+>   保留一个无分页的 root-only 副本只是死代码。
+> - ⚠️ **§8 的一处事实修正**：番剧的写操作桩在 `AnimeService` 而非 `AnimeController`
+>   （controller 只是转发），照着 controller 找会白费功夫。
 
 ## 0. 范围与一条硬约束
 
