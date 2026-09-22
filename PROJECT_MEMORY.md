@@ -128,7 +128,7 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
 | 18 | P1 | 看板 v2：亮色适配 / 事件中文化 / 指标重构 / AI 登录门禁 | ✅ 2026-09-22 | 新增 `stats/engagement`（访问量·消耗·使用率）；`CHART_COLORS` 改为运行时读 CSS 变量（图表终于跟随主题）；事件中文名映射 `constants/track-events.ts`；AI 页未登录不再发请求。**顺带修出 `search.submit` 从未上报**（见 §4） |
 | 19 | P1 | anime-ai 话题范围守卫（只聊动漫） | ✅ 2026-09-22 | 提示词加固 + 输入前置拦截，**fail-open**。拒答走正常 SSE、`finishReason=SCOPE_REJECTED`、不计为错误。71 项纯函数单测 |
-| 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | 🔄 2026-09-22 | 见 `admin-roadmap.md`。**用户管理 + 安全收口已完成**（见 §4 修复记录）：封禁列与三处即时失效、`RootGuard` 抽取、`admin/users` 全套接口、级联删号、审计表；已删越权枚举 `GET /api/user` 与整个停用的番剧 HTTP 子系统。**剩余**：AI 会话审阅、埋点明细查询/导出、系统配置、番剧数据（后者的正解是「删」，见 roadmap §8） |
+| 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | 🔄 2026-09-22 | 见 `admin-roadmap.md`。**用户管理（含前端界面）+ 安全收口已完成**（见 §4 修复记录）：封禁列与三处即时失效、`RootGuard` 抽取、`admin/users` 全套接口、级联删号、审计表、`/admin` 用户管理分区（tab 化）；已删越权枚举 `GET /api/user` 与整个停用的番剧 HTTP 子系统。**剩余**：AI 会话审阅、埋点明细查询/导出、系统配置、番剧数据（后者的正解是「删」，见 roadmap §8） |
 
 ---
 
@@ -186,6 +186,15 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 - **兜底清理要能覆盖「崩在半路」**：脚本中途抛异常时，用户行可能已删，
   只按用户名清理会漏掉它名下的埋点。改成把测试账号 id 存在**模块级变量**里，
   `main().catch()` 按 id 删。
+
+- **孤儿断言只查 `track_event` 是无效断言**（并行 agent 验收时指出，查证属实且更广）：
+  脚本自己造数的 `ai_conversation`/`ai_message`/`ai_usage`/`user_anime` **没进清理**，
+  于是崩溃运行留下了孤儿 —— 而「删号不留孤儿」正是它断言的项。改为统计**全部 8 张级联表**
+  的孤儿总数并断言「本次增量 0」；兜底清理补齐漏掉的表（正常路径靠 API 级联不会漏，
+  但**崩溃路径只能靠兜底**）。清理时全库实测有 `ai_message` 8 / `ai_conversation` 4 /
+  `refresh_token` **49** / `playback_session` 4 行孤儿，其中 `refresh_token` 那 49 行是
+  **修掉 `UserService.delete` 之前长年泄漏的历史残留** —— 正好是那个 bug 真实存在的物证。
+  ⚠️ 教训：**断言范围必须覆盖「被测代码负责清理的全部对象」，否则它会在真正的泄漏面前照样通过。**
 
 **验证**：新增可重复执行的 `scripts/admin-e2e.mjs`（**57 项断言，连跑 3 次全绿**），覆盖
 非 root 越权（7 个端点全 403 + 匿名 401）、列表无 `password` 字段、**LIKE 通配符转义**
