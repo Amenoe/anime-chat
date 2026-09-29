@@ -14,7 +14,7 @@
 | [`playback-architecture.md`](./playback-architecture.md) | 播放架构：BT/磁力 → 站内播、qBittorrent 部署与限制 |
 | [`schema.sql`](./schema.sql) | 全量表结构（生产建库依据） |
 
-各仓代码导览见 `anime-chat/CLAUDE.md`（前端）、`anime-chat-server/CLAUDE.md`（后端）。
+各仓 AI 助手工作规则与代码导览见 `anime-chat/AGENTS.md`（前端）、`anime-chat-server/AGENTS.md`（后端）、`anime-ai/AGENTS.md`（AI 服务）。
 
 ## 维护约定
 

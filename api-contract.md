@@ -313,6 +313,19 @@ HTTP 200、不发 `error` 事件、`status=ok`、`model=null`、token 全为 0�
 | `GET /api/ai/stats/tools?days=` | 工具使用分布（按调用组合分组）。**看板已不展示**，接口保留备用 |
 | `GET /api/ai/stats/top-users?days=&limit=` | 用量最高的用户，含 `username`/`nickname` |
 
+### 管理端 P1：审阅与埋点明细
+
+以下接口均要求 `AuthGuard('jwt') + RootGuard`。AI 会话列表不返回 `title`，避免把用户首轮提问批量暴露；查看单会话消息会单独写入 `admin_audit_log` 的 `ai.read`。
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/admin/ai/conversations?userId=&from=&to=&cursor=&size=` | 按创建时间倒序，游标分页，不返回标题原文 |
+| `GET /api/admin/ai/conversations/:id/messages` | 一次只返回一个会话的消息，读取动作审计 |
+| `GET /api/admin/track/events?event=&userId=&from=&to=&cursor=&size=` | 游标分页，默认不返回 `props`，不返回 total |
+| `GET /api/admin/track/events/export?...&includeProps=1` | UTF-8 BOM CSV，最多 50000 行、时间跨度最多 31 天；导出前写 `track.export` 审计，字段做 CSV 公式注入防护 |
+
+埋点链路保持统一：前端通过 `/api/track` 批量写入，后端业务通过 `TrackService.trackOne()` 写入同一张 `track_event`。两者使用相同的 `event/page/target/props/client_ts` 字段；登录事件以 JWT 用户归属，匿名事件以 `anonymousId` 串联。后端业务事件应避免写入消息正文、密码、令牌或其他不必要的个人数据，AI 请求只记录模型、耗时、token、工具名和终态。
+
 非 `role = 'root'` 一律 403。`days` 收敛到 1–90，`limit` 上限 100。
 前端页面对应 `/admin`（侧边栏入口只对 root 展示）。
 

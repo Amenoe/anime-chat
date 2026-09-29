@@ -1,6 +1,6 @@
 # 管理员功能路线（Admin Roadmap）
 
-> 状态：**P0/P1 部分已实施**（2026-09-22）｜前置：只读看板 `/admin` 已上线（`PROJECT_MEMORY.md` #17）
+> 状态：**P0/P1 部分已实施**（2026-09-27）｜前置：只读看板 `/admin` 已上线（`PROJECT_MEMORY.md` #17）
 > 契约照 `api-contract.md`：前缀 `api`、成功走 `TransformInterceptor` 信封、错误走 `HttpExceptionFilter`
 > 且带真实状态码、DTO 必须显式声明每个可收字段（`forbidNonWhitelisted` 传未声明字段直接 400）
 > 本文只写**管理员增量**，不改用户侧已有契约。表结构变动最终要同步进 `docs/schema.sql`
@@ -9,7 +9,8 @@
 > - ✅ §2.2 审计表 `admin_audit_log`、§3.1 封禁（新列 + 三处即时失效）、
 >   §3.2 级联清理（`AccountCleanupService`）、§3.3 越权枚举处置、§4 用户管理
 > - ✅ 额外完成：抽公共 `RootGuard` 替换两份 `assertRoot`；删除整个停用的番剧 HTTP 子系统（§8 方案 A）
-> - ⬜ §5 AI 会话审阅、§6 埋点明细查询与导出、§7 系统配置
+> - ✅ §5 AI 会话审阅、§6 埋点明细查询与导出
+> - ⬜ §7 系统配置
 > - ⚠️ **§3.3 的处置方式与原文不同**：原文建议把 `GET /api/user` 收紧为仅 root，
 >   实际选择**直接删除** —— 管理端列表已由 `/api/admin/users`（分页 + 关键词 + 字段白名单）承担，
 >   保留一个无分页的 root-only 副本只是死代码。
@@ -43,7 +44,7 @@
 统一用法 `@UseGuards(AuthGuard('jwt'), RootGuard)`；顺手把现有 7 个统计端点的 `assertRoot(req)` 换成守卫，一处定义。
 
 ⚠️ **顺序不能反**：`RootGuard` 依赖 `AuthGuard('jwt')` 填充的 `req.user`。反了则 `req.user` 恒为
-`undefined`、连管理员都 403 —— `CLAUDE.md` 已记过一次同类坑，换守卫后**依然存在**，只是从「忘挂守卫」
+`undefined`、连管理员都 403 —— `anime-chat-server/AGENTS.md` 已记过一次同类坑，换守卫后**依然存在**，只是从「忘挂守卫」
 变成「挂错顺序」。
 
 **2.2 审计表 `admin_audit_log`**（横切，先建）—— 字段：
@@ -90,7 +91,7 @@ ALTER TABLE `user`
 查一次库（体检 #2），在那里拦一次主键查询就够了 —— 这是该需求能低成本成立的原因。
 
 **有意保留的缺口**：被封用户揣着未过期 accessToken 打 `POST /api/track`，会因 `OptionalJwtGuard`
-丢弃 err 而被记成匿名。不改的理由：埋点必须对「token 过期的访客」也保持匿名可用（`CLAUDE.md`
+丢弃 err 而被记成匿名。不改的理由：埋点必须对「token 过期的访客」也保持匿名可用（`anime-chat-server/AGENTS.md`
 明确两者冲突时选埋点可用性），改成 401 会误伤正常访客。业务接口全走必需的 `AuthGuard('jwt')`，已被 401 拦住。
 
 **防自锁**：禁止封禁自己；禁止封禁**最后一个未封禁的 root**

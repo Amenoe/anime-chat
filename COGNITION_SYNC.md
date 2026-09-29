@@ -1,7 +1,7 @@
 # 前后端认知同步
 
 > 双仓库（`anime-chat` 前端 / `anime-chat-server` 后端）**必须共同遵守**的约定。
-> 两端各自的代码导览见 `anime-chat/CLAUDE.md` 与 `anime-chat-server/CLAUDE.md`；
+> 两端各自的 AI 助手工作规则与代码导览见 `anime-chat/AGENTS.md` 与 `anime-chat-server/AGENTS.md`；AI 服务见 `anime-ai/AGENTS.md`。
 > 本文只写「跨仓」的部分——凡是两端要对齐的东西都在这里。
 >
 > 改任何一端前，先确认本文对应小节是否要一起改。

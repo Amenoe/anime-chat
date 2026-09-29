@@ -224,7 +224,8 @@ CREATE TABLE IF NOT EXISTS `track_event` (
   `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
   KEY `IDX_track_event_event_time` (`event`,`create_time`),
-  KEY `IDX_track_event_user_time` (`user_id`,`create_time`)
+  KEY `IDX_track_event_user_time` (`user_id`,`create_time`),
+  KEY `IDX_track_event_time` (`create_time`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ─── 管理员审计（2026-09-22 新增）────────────────────────────────

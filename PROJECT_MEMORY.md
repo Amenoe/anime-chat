@@ -14,7 +14,7 @@
 | `playback-architecture.md` | 播放架构：BT/磁力 → 站内播、qBittorrent 部署 |
 | `schema.sql` | 全量表结构（生产建库依据，改实体后必须同步） |
 
-> 各仓代码导览：`anime-chat/CLAUDE.md`（前端）、`anime-chat-server/CLAUDE.md`（后端）。
+> 各仓 AI 助手工作规则与代码导览：`anime-chat/AGENTS.md`（前端）、`anime-chat-server/AGENTS.md`（后端）、`anime-ai/AGENTS.md`（AI 服务）。
 
 ---
 
@@ -112,7 +112,7 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 2 | P0 | 修复用户接口越权：`PATCH/DELETE /user/:id`、`PATCH /user/status/:id` 校验本人 | ✅ 2026-08-16 | 修复前可改任意人密码/删号 |
 | 3 | P1 | 联调验收 | ✅ 2026-08-16 | 后端协议级 29/29 + UI 渲染验收通过（headless Chrome：首页/详情/房间页布局、房主身份、自动选源触发、聊天侧栏）；双账号真实播放器同步建议人工复核 |
 | 4 | P1 | 下线旧纯聊天：`/chat` 路由与页面/store 移除 | ✅ 2026-08-17 | ChatMessage 类型迁至 stores/types.ts；后端 addGroup 保留兼容并标 deprecated |
-| 5 | P1 | 文档同步：`docs/schema.sql` 补全新表；README 更新；CLAUDE.md 模块清单补放映室/播放/媒体源 | ✅ 2026-08-16 | schema 已含 group/playback/media_source 等全部表 |
+| 5 | P1 | 文档同步：`docs/schema.sql` 补全新表；README 更新；仓级 AI 工作指南补放映室/播放/媒体源模块清单 | ✅ 2026-08-16 | schema 已含 group/playback/media_source 等全部表 |
 | 6 | P2 | 前端 chunk 拆分 | ✅ 2026-08-17 | Element Plus 按需引入 + artplayer/hls.js 独立分包；index 1.2MB → 525KB（gzip 408→176KB） |
 | 7 | P2 | `/timeline` 改为 AI 相关页面 | ✅ 2026-09-21 | 已并入 `anime-chat` main（merge `727dc25`）。侧边栏「时间表」→「AI 助手」(`/ai`)，`/timeline` 保留重定向兼容旧书签；`views/ai/Ai.vue` 暂为占位页，待接入真实对话（见 #15） |
 | 8 | P2 | heartbeat 广播节流 | ✅ 2026-08-17 | 1s 内不重复广播 playback:state；非心跳控制即时广播 |
@@ -122,7 +122,7 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 11 | P1 | joinRoom 回包字段对齐（`playback_episode_*` → `episode_*`） | ✅ 2026-08-18 | 修复「第几话建房不自动播第几话」；另加 `[src-debug]` 日志定位残余重搜 |
 | 12 | P2 | PlayerPane 拆分重构 | ✅ 2026-08-18 | 1209 行 → 375 行；拆出 useSourceSearch / SourceDrawer / source-quality；已提交推送 |
 | 13 | P1 | JWT 双 token + 前端静默刷新 | ✅ 2026-09-15 | accessToken 2h / refreshToken 30d 落库轮换吊销；前端 401 单次重试 + 并发合并；真实接口验收 24/24 |
-| 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端 `CLAUDE.md`；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
+| 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端仓级工作指南；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
 | 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | ✅ 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试）；**NestJS 网关**✅（`3858179`）；**前端对话界面**✅（`aa65f50`，分支 `feat/ai-chat-ui` 未合并）。浏览器实测 11/11：流式渲染、Markdown、卡片、点按跳详情、刷新恢复；**用户头像同步 + 卡片与推荐对齐 + 埋点体系**✅ 2026-09-21（已合入 main 并推送） |
 | 17 | P2 | 管理员数据看板（展示埋点与 AI 用量） | ✅ 2026-09-22 | 前端 `/admin` + 侧边栏按 role 动态入口；图表用 echarts 6（按需注册 + 独立分包，Admin 101KB / charts 549KB 均为懒加载）。顺带修出 3 个后端统计 bug（见 §4）。**初始没有任何 root 账号**，需手工 `UPDATE user SET role='root'`（见 `api-contract.md` §5） |
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-09-21 | 见 `ai-rag-practice-roadmap.md`。**已定：Java + LangChain4j 1.20.0**（Boot 4.0.8，评估走 Python ragas 旁路脚本）；M1 见 #15，M2（Qdrant + 向量检索）未开工。⚠️ M1 实测更正了「Bangumi 结构化过滤够用」的假设 |
@@ -133,6 +133,13 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 ---
 
 ## 4. 修复记录
+
+### 2026-09-23 · 管理页切换覆盖、用户表暗色适配与 AI 工作指南迁移
+
+- 管理页使用绝对定位的路由动画，且 `Admin.vue` 以 renderless 的 `el-config-provider` 作为根节点；路由离场后 Transition 留下空占位，后续页面未挂载。移除这层自定义过渡，保留 Search 的 KeepAlive，页面切换后旧页卸载、新页显示。
+- 用户管理表及隔行背景都改用项目主题令牌，暗色主题不再出现 Element Plus 默认白色条纹。
+- 三个代码仓将 `CLAUDE.md` 迁移为面向通用 AI 编码助手的 `AGENTS.md`，并同步当前文档入口；保留各仓技术边界与验证约定。
+- **验证**：`pnpm type-check`、`pnpm build-only`、`pnpm lint` 与 Prettier 均通过；真实 headless Chrome 验收 9/9（含用户管理、暗色样式目测、离开管理页后首页可见、切回看板与 0 console error），临时账号已清理。构建保留既有 Rollup 注释/分包/chunk 体积警告；截图 `/tmp/parent-admin-users.png`。
 
 ### 2026-09-22 · 管理端落地：封禁、用户管理、级联删号、安全收口
 

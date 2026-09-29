@@ -219,7 +219,7 @@ golden set (JSON: 问题 + 期望 subject_id)
 | 工具 | `browse_anime` + `search_anime`，4 个**打真实 Bangumi 接口**的测试全绿 |
 | 启动 | 0.7s |
 
-**实测中修掉的 4 个真问题**（都已写进 `anime-ai/CLAUDE.md`）：
+**实测中修掉的 4 个真问题**（都已写进 `anime-ai/AGENTS.md`）：
 
 1. **Boot 4 默认 Jackson 3，LangChain4j 用 Jackson 2**。Boot 4 不再自动配置
    `com.fasterxml.jackson.databind.ObjectMapper` bean → 注入它直接**启动失败**。
@@ -711,4 +711,3 @@ LangGraph 的 state/channel 设计；写了 RAG 就要能被追问切分、召�
 3. **是否开源部署**：涉及语料版权与 API key 成本。
 4. **NestJS 侧 Session 归属**：会话历史存 MySQL（`ai_conversation`/`ai_message`）还是先放前端 localStorage。
 5. **SiliconFlow embedding 模型名**：需在控制台确认确切的 model id（BGE-M3 在该平台的调用名）。
-
