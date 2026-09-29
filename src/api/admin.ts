@@ -215,6 +215,44 @@ export interface IAdminDeleteResult {
   counts: Record<string, number>
 }
 
+export interface IAdminTrackEvent {
+  id: string
+  event: string
+  user_id: string | null
+  anonymous_id: string | null
+  page: string | null
+  target: string | null
+  props?: Record<string, unknown> | null
+  client_ts: string | null
+  create_time: string
+}
+
+export interface IAdminTrackQuery {
+  event?: string
+  userId?: string
+  from?: string
+  to?: string
+  cursor?: string
+  size?: number
+  includeProps?: boolean
+}
+
+export interface IAdminConversation {
+  id: string
+  user_id: string
+  create_time: string
+  update_time: string
+  message_count: number
+}
+
+export interface IAdminAiMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  tool_results: unknown[] | null
+  create_time: string
+}
+
 export function listAdminUsers(params: IAdminUserQuery) {
   return request.get<IAdminUserList>({ url: '/admin/users', params })
 }
@@ -255,5 +293,25 @@ export function getAdminAuditLogs(limit = 30) {
   return request.get<IAdminAuditLog[]>({
     url: '/admin/users/audit',
     params: { limit },
+  })
+}
+
+export function listAdminTrackEvents(params: IAdminTrackQuery) {
+  return request.get<{ items: IAdminTrackEvent[]; nextCursor: string | null }>({
+    url: '/admin/track/events',
+    params,
+  })
+}
+
+export function listAdminAiConversations(params: Omit<IAdminTrackQuery, 'event' | 'includeProps'>) {
+  return request.get<{ items: IAdminConversation[]; nextCursor: string | null }>({
+    url: '/admin/ai/conversations',
+    params,
+  })
+}
+
+export function getAdminAiMessages(id: string) {
+  return request.get<{ conversationId: string; messages: IAdminAiMessage[] }>({
+    url: `/admin/ai/conversations/${encodeURIComponent(id)}/messages`,
   })
 }

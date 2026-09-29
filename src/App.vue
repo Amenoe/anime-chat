@@ -10,7 +10,7 @@
           v-for="{ name, routeName, routePath, icon } in sideList"
           :key="routeName"
           class="mobile-nav__link"
-          :class="{ active: $route.fullPath.includes(routePath) }"
+          :class="{ active: matchesSideRoute(routePath) }"
           :to="{ name: routeName }"
         >
           <Icon :name="icon" />
@@ -60,6 +60,11 @@ const loginStore = useLoginStore()
  */
 const sideList = computed(() => routeStore.routeList)
 const router = useRouter()
+const currentRoute = useRoute()
+
+function matchesSideRoute(routePath: string): boolean {
+  return currentRoute.path.split('/').includes(routePath)
+}
 
 const mq = window.matchMedia('(max-width: 768px)')
 const isMobile = ref(mq.matches)

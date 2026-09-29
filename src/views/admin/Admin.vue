@@ -1,14 +1,13 @@
 <template>
   <!--
-    包一层 `el-config-provider` 只为中文文案（分页的「共 N 条」「N 条/页」、
-    下拉的「无数据」）。它是 **renderless** 的（只 `renderSlot`，不产生额外 DOM），
-    所以不会像普通 wrapper 那样把 `.page` 的 `height:100%` 打断 ——
-    那种坑本项目踩过（见 CSS 段注释）。
+    `el-config-provider` 只负责中文文案（分页的「共 N 条」「N 条/页」、
+    下拉的「无数据」）。外层 `.page` 必须保留为组件根节点，
+    确保路由视图能正确挂载与卸载页面。
     刻意不改成全局 `app.use(ElementPlus, { locale })`：那会把整个 Element Plus
     拉进首屏，而这个项目是**按需引入**的。
   -->
-  <el-config-provider :locale="zhCn">
-    <div id="admin" class="page admin-page">
+  <div id="admin" class="page admin-page">
+    <el-config-provider :locale="zhCn">
       <!-- 非管理员：不发明细的请求，直接给结论。后端也会 403，这里只是少一次无效往返 -->
       <el-empty v-if="!isRoot" description="仅管理员可访问" />
 
@@ -17,7 +16,7 @@
           <div class="admin-head__title">
             <span class="admin-head__bar"></span>
             <h2>管理后台</h2>
-            <span class="admin-head__sub">数据看板 · 用户管理</span>
+            <span class="admin-head__sub">数据看板 · 用户 · 会话 · 埋点</span>
           </div>
           <div class="admin-head__ops">
             <!-- 统计区间只对数据看板有意义，放到用户管理 tab 会让人以为它在筛用户 -->
@@ -172,6 +171,123 @@
                 </el-table-column>
               </el-table>
             </section>
+          </el-tab-pane>
+
+          <el-tab-pane label="AI 会话审阅" name="ai-review" lazy>
+            <el-alert
+              type="warning"
+              show-icon
+              :closable="false"
+              class="admin-alert"
+              title="会话内容属于用户私密数据；每次列表查询与正文查看都会写入审计日志。"
+            />
+            <div class="user-filter">
+              <el-input v-model="reviewQuery.userId" placeholder="用户 ID（可选）" clearable />
+              <el-date-picker
+                v-model="reviewQuery.from"
+                type="datetime"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                placeholder="开始时间"
+              />
+              <el-date-picker
+                v-model="reviewQuery.to"
+                type="datetime"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                placeholder="结束时间"
+              />
+              <el-button
+                type="primary"
+                :icon="Search"
+                :loading="reviewLoading"
+                @click="searchConversations"
+                >查询</el-button
+              >
+            </div>
+            <el-table v-loading="reviewLoading" :data="conversations" class="admin-table">
+              <el-table-column label="会话" min-width="190"
+                ><template #default="{ row }"
+                  >会话 #{{ row.id.slice(0, 8) }}</template
+                ></el-table-column
+              >
+              <el-table-column label="用户 ID" min-width="190" prop="user_id" />
+              <el-table-column label="创建时间" width="190"
+                ><template #default="{ row }">{{
+                  formatUtcString(row.create_time)
+                }}</template></el-table-column
+              >
+              <el-table-column label="消息数" width="90" align="right" prop="message_count" />
+              <el-table-column label="操作" width="100" align="right">
+                <template #default="{ row }"
+                  ><el-button link type="primary" @click="openConversation(row)"
+                    >查看消息</el-button
+                  ></template
+                >
+              </el-table-column>
+              <template #empty><el-empty description="暂无会话" :image-size="60" /></template>
+            </el-table>
+            <div class="user-pager">
+              <el-button
+                :disabled="!conversationCursor"
+                :loading="reviewLoading"
+                @click="loadMoreConversations"
+                >加载下一页</el-button
+              >
+            </div>
+          </el-tab-pane>
+
+          <el-tab-pane label="埋点明细" name="track-events" lazy>
+            <div class="user-filter">
+              <el-input v-model="trackQuery.event" placeholder="事件名" clearable />
+              <el-input v-model="trackQuery.userId" placeholder="用户 ID" clearable />
+              <el-date-picker
+                v-model="trackQuery.from"
+                type="datetime"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                placeholder="开始时间"
+              />
+              <el-date-picker
+                v-model="trackQuery.to"
+                type="datetime"
+                value-format="YYYY-MM-DDTHH:mm:ss"
+                placeholder="结束时间"
+              />
+              <el-button
+                type="primary"
+                :icon="Search"
+                :loading="trackLoading"
+                @click="searchTrackEvents"
+                >查询</el-button
+              >
+              <el-button :icon="Download" :loading="exportLoading" @click="exportTrackEvents"
+                >导出 CSV</el-button
+              >
+            </div>
+            <el-checkbox v-model="includeTrackProps">导出包含 props（可能含业务数据）</el-checkbox>
+            <el-table v-loading="trackLoading" :data="trackEvents" class="admin-table">
+              <el-table-column label="时间" width="185"
+                ><template #default="{ row }">{{
+                  formatUtcString(row.create_time)
+                }}</template></el-table-column
+              >
+              <el-table-column label="事件" width="190" prop="event" />
+              <el-table-column label="用户" min-width="190"
+                ><template #default="{ row }">{{
+                  row.user_id || `匿名 ${row.anonymous_id || ''}`
+                }}</template></el-table-column
+              >
+              <el-table-column label="页面" width="110" prop="page" />
+              <el-table-column label="目标" min-width="140" prop="target" />
+              <el-table-column label="ID" width="150" prop="id" />
+              <template #empty><el-empty description="暂无埋点" :image-size="60" /></template>
+            </el-table>
+            <div class="user-pager">
+              <el-button
+                :disabled="!trackCursor"
+                :loading="trackLoading"
+                @click="loadMoreTrackEvents"
+                >加载下一页</el-button
+              >
+            </div>
           </el-tab-pane>
 
           <el-tab-pane label="用户管理" name="users" lazy>
@@ -378,6 +494,25 @@
           </el-tab-pane>
         </el-tabs>
 
+        <el-dialog
+          v-model="conversationDialogVisible"
+          :title="`会话 #${selectedConversation?.id.slice(0, 8) || ''}`"
+          width="min(900px, 92vw)"
+        >
+          <div v-loading="messagesLoading" class="review-messages">
+            <article v-for="message in reviewedMessages" :key="message.id" class="review-message">
+              <header>
+                {{ message.role === 'user' ? '用户' : 'AI 助手' }} ·
+                {{ formatUtcString(message.create_time) }}
+              </header>
+              <pre>{{ message.content }}</pre>
+              <pre v-if="message.tool_results?.length" class="review-tools">{{
+                JSON.stringify(message.tool_results, null, 2)
+              }}</pre>
+            </article>
+          </div>
+        </el-dialog>
+
         <!-- ── 封禁弹窗 ─────────────────────────────────────── -->
         <el-dialog
           v-model="banDialogVisible"
@@ -469,8 +604,8 @@
           </template>
         </el-dialog>
       </template>
-    </div>
-  </el-config-provider>
+    </el-config-provider>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -479,6 +614,9 @@ import {
   deleteAdminUser,
   getAdminAuditLogs,
   getAdminUserDetail,
+  getAdminAiMessages,
+  listAdminAiConversations,
+  listAdminTrackEvents,
   getAiDaily,
   getAiEngagement,
   getAiTopUsers,
@@ -491,6 +629,9 @@ import {
   setAdminUserRole,
   type AdminUserRole,
   type IAdminAuditLog,
+  type IAdminAiMessage,
+  type IAdminConversation,
+  type IAdminTrackEvent,
   type IAdminUser,
   type IAdminUserStats,
   type IAiDaily,
@@ -509,7 +650,7 @@ import { formatUtcString } from '@/utils/date-format'
 import type { EChartsOption } from '@/utils/echarts'
 import { PASSWORD_HINT, passwordRule } from '@/utils/password'
 import { track } from '@/utils/track'
-import { QuestionFilled, Refresh, Search } from '@element-plus/icons-vue'
+import { Download, QuestionFilled, Refresh, Search } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 
@@ -526,7 +667,7 @@ const errorMsg = ref('')
  * 分区。看板在前、用户管理在后 —— 默认停在看板，
  * 这样既有书签/习惯不变，也不会一进管理页就同时打统计与用户两套接口。
  */
-type AdminTab = 'dashboard' | 'users'
+type AdminTab = 'dashboard' | 'users' | 'ai-review' | 'track-events'
 const activeTab = ref<AdminTab>('dashboard')
 /** 用户列表只在**首次**切到该分区时拉取（`el-tab-pane` 的 lazy 只管渲染，不管取数） */
 const usersLoaded = ref(false)
@@ -547,6 +688,156 @@ function onTabChange(name: unknown) {
     usersLoaded.value = true
     void loadUsers()
     void loadAudit()
+  }
+  if (String(name) === 'ai-review') void searchConversations()
+  if (String(name) === 'track-events') void searchTrackEvents()
+}
+
+const reviewQuery = reactive<{ userId: string; from: Date | null; to: Date | null }>({
+  userId: '',
+  from: null,
+  to: null,
+})
+const conversations = ref<IAdminConversation[]>([])
+const conversationCursor = ref<string | null>(null)
+const reviewLoading = ref(false)
+const conversationDialogVisible = ref(false)
+const selectedConversation = ref<IAdminConversation | null>(null)
+const reviewedMessages = ref<IAdminAiMessage[]>([])
+const messagesLoading = ref(false)
+const trackQuery = reactive<{ event: string; userId: string; from: Date | null; to: Date | null }>({
+  event: '',
+  userId: '',
+  from: null,
+  to: null,
+})
+const trackEvents = ref<IAdminTrackEvent[]>([])
+const trackCursor = ref<string | null>(null)
+const trackLoading = ref(false)
+const includeTrackProps = ref(false)
+const exportLoading = ref(false)
+
+function isoDate(date: string | Date | null) {
+  if (!date) return undefined
+  return date instanceof Date ? date.toISOString() : date
+}
+function reviewParams(cursor?: string) {
+  return {
+    userId: reviewQuery.userId.trim() || undefined,
+    from: isoDate(reviewQuery.from),
+    to: isoDate(reviewQuery.to),
+    cursor,
+    size: 50,
+  }
+}
+async function searchConversations() {
+  reviewLoading.value = true
+  conversations.value = []
+  conversationCursor.value = null
+  try {
+    const result = await listAdminAiConversations(reviewParams())
+    conversations.value = result.items
+    conversationCursor.value = result.nextCursor
+  } catch {
+    /* Axios interceptor reports request errors. */
+  } finally {
+    reviewLoading.value = false
+  }
+}
+async function loadMoreConversations() {
+  if (!conversationCursor.value || reviewLoading.value) return
+  reviewLoading.value = true
+  try {
+    const result = await listAdminAiConversations(reviewParams(conversationCursor.value))
+    conversations.value.push(...result.items)
+    conversationCursor.value = result.nextCursor
+  } catch {
+    /* Axios interceptor reports request errors. */
+  } finally {
+    reviewLoading.value = false
+  }
+}
+async function openConversation(row: IAdminConversation) {
+  selectedConversation.value = row
+  reviewedMessages.value = []
+  conversationDialogVisible.value = true
+  messagesLoading.value = true
+  try {
+    reviewedMessages.value = (await getAdminAiMessages(row.id)).messages
+  } catch {
+    conversationDialogVisible.value = false
+  } finally {
+    messagesLoading.value = false
+  }
+}
+function trackParams(cursor?: string) {
+  return {
+    event: trackQuery.event.trim() || undefined,
+    userId: trackQuery.userId.trim() || undefined,
+    from: isoDate(trackQuery.from),
+    to: isoDate(trackQuery.to),
+    cursor,
+    size: 50,
+  }
+}
+async function searchTrackEvents() {
+  trackLoading.value = true
+  trackEvents.value = []
+  trackCursor.value = null
+  try {
+    const result = await listAdminTrackEvents(trackParams())
+    trackEvents.value = result.items
+    trackCursor.value = result.nextCursor
+  } catch {
+    /* Axios interceptor reports request errors. */
+  } finally {
+    trackLoading.value = false
+  }
+}
+async function loadMoreTrackEvents() {
+  if (!trackCursor.value || trackLoading.value) return
+  trackLoading.value = true
+  try {
+    const result = await listAdminTrackEvents(trackParams(trackCursor.value))
+    trackEvents.value.push(...result.items)
+    trackCursor.value = result.nextCursor
+  } catch {
+    /* Axios interceptor reports request errors. */
+  } finally {
+    trackLoading.value = false
+  }
+}
+async function exportTrackEvents() {
+  if (!trackQuery.from || !trackQuery.to) {
+    ElMessage.warning('导出必须选择开始和结束时间')
+    return
+  }
+  exportLoading.value = true
+  try {
+    const params = new URLSearchParams(
+      Object.entries({ ...trackParams(), includeProps: includeTrackProps.value ? '1' : '' }).filter(
+        ([, value]) => !!value,
+      ) as Array<[string, string]>,
+    )
+    const token = localStorage.getItem('token') || ''
+    const response = await fetch(
+      `${import.meta.env.VITE_BASE_API}/admin/track/events/export?${params}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    if (!response.ok) {
+      const payload = await response.json().catch(() => null)
+      throw new Error(payload?.message || 'CSV 导出失败')
+    }
+    const url = URL.createObjectURL(await response.blob())
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'track-events.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (error) {
+    ElMessage.error(error instanceof Error ? error.message : 'CSV 导出失败')
+  } finally {
+    exportLoading.value = false
   }
 }
 
@@ -1455,6 +1746,51 @@ async function onDelete(row: IAdminUser) {
 
 .user-table {
   width: 100%;
+  --el-table-bg-color: var(--aside-bg-color);
+  --el-table-tr-bg-color: var(--aside-bg-color);
+  --el-table-header-bg-color: var(--bg-color);
+  --el-table-row-hover-bg-color: var(--surface-weak);
+  --el-table-current-row-bg-color: var(--surface-strong);
+  --el-table-expanded-cell-bg-color: var(--aside-bg-color);
+  --el-table-text-color: var(--font-color);
+  --el-table-header-text-color: var(--font-color);
+  --el-table-border-color: var(--surface-strong);
+  --el-fill-color-lighter: var(--surface-weak);
+}
+
+.review-messages {
+  max-height: min(65vh, 720px);
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+}
+
+.review-message {
+  padding: 12px;
+  border: 1px solid var(--surface-strong);
+  border-radius: 6px;
+  background: var(--aside-bg-color);
+
+  header {
+    margin-bottom: 8px;
+    color: var(--font-unactive-color);
+    font-size: 12px;
+  }
+
+  pre {
+    margin: 0;
+    color: var(--font-color);
+    font: inherit;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  .review-tools {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--surface-strong);
+    color: var(--font-unactive-color);
+  }
 }
 
 .user-cell {

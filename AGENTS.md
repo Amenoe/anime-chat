@@ -1,6 +1,15 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本文件为在本仓库协作的 AI 编码助手提供通用工作规则与项目导览。
+
+## AI 助手通用规则
+
+- 开始修改前检查当前 Git 状态、适用的 `AGENTS.md`、相关实现和跨仓契约；保留已有的未提交改动。
+- 先沿用项目现有组件、状态管理、样式令牌和 API 封装；只改完成任务所需的范围。
+- 涉及鉴权、个人数据或服务接口时，先核对权限边界和调用方，并同步接口文档及相关仓库。
+- 不读取、输出或提交密钥、真实用户凭据和环境文件；验收数据必须隔离并在结束时清理。
+- UI 改动除静态检查外，还要在真实浏览器中检查导航、滚动、主题和控制台错误。
+- 汇报验证结果时注明实际执行的命令；未验证的行为要明确标出。
 
 ## Project Overview
 

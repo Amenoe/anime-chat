@@ -41,6 +41,10 @@ const $route = useRoute()
 const $router = useRouter()
 const { guardLeaveRoom } = useLeaveRoomGuard()
 
+function matchesRoute(routePath: string): boolean {
+  return $route.path.split('/').includes(routePath)
+}
+
 /** a 标签真实 href：默认点击走 SPA，中键 / Cmd+点击可新开标签页 */
 function hrefOf(routeName: string): string {
   return $router.resolve({ name: routeName }).href
@@ -56,7 +60,7 @@ async function onNavClick(e: MouseEvent, routeName: string) {
 }
 
 const sliderStyle = computed(() => {
-  const routeIndex = props.sideList.findIndex((item) => $route.fullPath.includes(item.routePath))
+  const routeIndex = props.sideList.findIndex((item) => matchesRoute(item.routePath))
   return {
     transform: `translate(
           ${!~routeIndex ? -100 : 0}%,
