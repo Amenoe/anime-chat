@@ -380,6 +380,14 @@ POST /internal/retrieve                       ← 纯检索，不碰 LLM
 - ❌ 接 LLM 生成（M1 已接，M2 只做检索）
 - ❌ 字幕/群聊语料（M5）
 
+#### M2 实现进度（2026-09-29）
+
+- ✅ 已实现：Qdrant 集合及 payload 索引、BGE-M3 批量向量化、按内容 hash 跳过未变化项、MySQL `anime` 表与 Bangumi 排名分页导入。
+- ✅ 已实现：`POST /internal/retrieve` 纯检索端点及 `search_knowledge` 对话工具；前者不调用 LLM。
+- ✅ 2026-10-01 运行验收：Docker Desktop/Qdrant 启动成功；SiliconFlow BGE-M3 完成 3000 条导入（Qdrant `points_count=3000`）；重复导入未变化条目返回 `upserted=0`；`/internal/retrieve` 成功返回向量命中。
+- ⏳ 仍待：按验收标准补足 10 条手写查询并形成指标基线。当前快速抽查中，作品名检索（「命运石之门」）召回正确；「时间循环 悬疑」的 top-5 还未含《命运石之门》，语义召回质量不能算验收完成，留到 M3 golden set 量化与优化。
+- 当前语料入口可从 Bangumi 导入（最多 3000 条、分页间隔 1 秒）或读取本地 MySQL；有 MySQL 配置时默认使用 MySQL，无配置时默认 Bangumi。
+
 ### 3.7 成本速算：对话模型（远程）vs 本地
 
 embedding 便宜到可忽略（§3.6 ②），**真正的成本在对话模型**。
@@ -478,10 +486,10 @@ embedding 便宜到可忽略（§3.6 ②），**真正的成本在对话模型**
 
 ### 阶段 1 · Naive RAG：打通链路
 
-- **语料**：番剧简介 + 标签（1 万条量级）
-- **技术**：固定长度切分（带 overlap）→ BGE-M3 embedding → Qdrant → top-k 检索 → 拼 prompt
+- **语料**：番剧简介 + 标签（先做 3000 条基线）
+- **技术**：1 部番 = 1 个完整语义单元（不切 chunk）→ BGE-M3 embedding → Qdrant → top-k 检索 → 拼 prompt
 - **交付**：新增 `search_knowledge` 工具（用于「模糊回忆」类问题）
-- **可讲**：为什么 chunk 要 overlap、embedding 维度与距离度量（cosine vs dot）怎么选
+- **可讲**：为什么短简介不切 chunk、文档表示模板如何影响召回、embedding 维度与距离度量（cosine vs dot）怎么选
 - ⚠️ **本阶段的检索质量大概率不如 BM25**——这本身就是最好的教学材料，见阶段 2
 
 ### 阶段 2 · Hybrid + Rerank + 引用溯源 ← 性价比最高的一步
