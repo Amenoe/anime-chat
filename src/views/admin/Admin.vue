@@ -59,9 +59,9 @@
               :title="errorMsg"
             />
 
-            <!-- ── AI 助手：访问量 / 消耗 / 使用率 ─────────────────── -->
+            <!-- ── 番剧助手：访问量 / 消耗 / 使用率 ─────────────────── -->
             <section class="admin-section">
-              <h3 class="admin-section__title">AI 助手 · 访问量（近 {{ days }} 天）</h3>
+              <h3 class="admin-section__title">番剧助手 · 访问量（近 {{ days }} 天）</h3>
               <div class="stat-grid">
                 <div v-for="s in visitCards" :key="s.label" class="stat-card">
                   <span class="stat-card__label">{{ s.label }}</span>
@@ -72,7 +72,7 @@
             </section>
 
             <section class="admin-section">
-              <h3 class="admin-section__title">AI 助手 · 消耗（近 {{ days }} 天）</h3>
+              <h3 class="admin-section__title">番剧助手 · 消耗（近 {{ days }} 天）</h3>
               <div class="stat-grid">
                 <div v-for="s in costCards" :key="s.label" class="stat-card">
                   <span class="stat-card__label">{{ s.label }}</span>
@@ -87,7 +87,7 @@
         只给一个百分比而不给分子分母，读的人没法判断它怎么来的、也没法复核。
       -->
             <section class="admin-section">
-              <h3 class="admin-section__title">AI 助手 · 使用率（近 {{ days }} 天）</h3>
+              <h3 class="admin-section__title">番剧助手 · 使用率（近 {{ days }} 天）</h3>
               <div class="stat-grid">
                 <div
                   v-for="s in rateCards"
@@ -502,7 +502,7 @@
           <div v-loading="messagesLoading" class="review-messages">
             <article v-for="message in reviewedMessages" :key="message.id" class="review-message">
               <header>
-                {{ message.role === 'user' ? '用户' : 'AI 助手' }} ·
+                {{ message.role === 'user' ? '用户' : '番剧助手' }} ·
                 {{ formatUtcString(message.create_time) }}
               </header>
               <pre>{{ message.content }}</pre>
@@ -913,7 +913,7 @@ const hasAiTrend = computed(() => aiDaily.value.length > 0)
 const visitCards = computed(() => {
   const e = engagement.value
   return [
-    { label: 'AI 页面访问', value: fmt(e.page_views), hint: '打开 AI 助手页的次数' },
+    { label: 'AI 页面访问', value: fmt(e.page_views), hint: '打开 番剧助手页的次数' },
     { label: '访问人数', value: fmt(e.page_users), hint: '按登录用户去重' },
     { label: '对话次数', value: fmt(e.chat_requests), hint: '实际发起的提问轮次' },
     { label: '对话人数', value: fmt(e.chat_users), hint: '用过 AI 的去重人数' },

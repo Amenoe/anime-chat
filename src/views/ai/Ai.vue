@@ -8,8 +8,8 @@
     -->
     <div v-if="!isLogin" class="ai-gate">
       <el-icon class="ai-gate__icon"><MagicStick /></el-icon>
-      <h2 class="ai-gate__title">登录后使用 AI 助手</h2>
-      <p class="ai-gate__desc">AI 助手会读取你的对话历史，并计入每日对话配额，所以需要先登录。</p>
+      <h2 class="ai-gate__title">登录后使用 番剧助手</h2>
+      <p class="ai-gate__desc">番剧助手会读取你的对话历史，并计入每日对话配额，所以需要先登录。</p>
       <p class="ai-gate__hint">不登录也可以用「搜索」和首页浏览找番</p>
       <el-button type="primary" size="large" :icon="Key" @click="openLogin"> 立即登录 </el-button>
     </div>
@@ -52,7 +52,7 @@
       <section class="ai-main">
         <header class="ai-main__head">
           <el-button class="ai-main__toggle" :icon="Menu" text @click="asideOpen = !asideOpen" />
-          <span class="ai-main__title">AI 助手</span>
+          <span class="ai-main__title">番剧助手</span>
           <span class="ai-main__hint">推荐 / 寻找番剧</span>
         </header>
 

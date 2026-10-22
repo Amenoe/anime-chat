@@ -26,7 +26,7 @@ export const useRouteStore = defineStore('route', () => {
       icon: 'Search',
     },
     {
-      name: 'AI 助手',
+      name: '番剧助手',
       routeName: 'Ai',
       routePath: 'ai',
       icon: 'MagicStick',

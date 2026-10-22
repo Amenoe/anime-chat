@@ -19,7 +19,7 @@
 const PAGE_LABELS: Record<string, string> = {
   Home: '首页',
   Search: '搜索页',
-  Ai: 'AI 助手',
+  Ai: '番剧助手',
   User: '个人中心',
   Admin: '管理看板',
   Detail: '番剧详情',
@@ -32,7 +32,7 @@ const EVENT_LABELS: Record<string, string> = {
   // page.view 的文案由 PAGE_LABELS 拼出来，见 eventLabel()
   'page.view': '页面访问',
 
-  // ── AI 助手 ───────────────────────────────────────
+  // ── 番剧助手 ───────────────────────────────────────
   'ai.chat': 'AI 对话请求',
   'ai.send.click': 'AI 发送提问',
   'ai.done': 'AI 回答完成',

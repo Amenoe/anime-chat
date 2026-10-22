@@ -17,7 +17,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/search/Search.vue'),
   },
   {
-    // AI 助手：原「时间表」入口（每日放送已由首页 WeeklyTimeline 承担）
+    // 番剧助手：原「时间表」入口（每日放送已由首页 WeeklyTimeline 承担）
     path: '/ai',
     name: 'Ai',
     component: () => import('@/views/ai/Ai.vue'),
