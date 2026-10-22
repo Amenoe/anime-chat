@@ -760,18 +760,16 @@ onMounted(() => {
 })
 
 /**
- * 进度文案：「看到 3 / 共 13 集」。
+ * 进度文案：「看到第 3 话 / 共 12 话」。
  *
- * 总集数未知（0）时只说到第几集 —— 编一个总数出来比不显示更糟。
+ * 用「话」而不是「集」—— 动漫语境里的习惯说法。
+ * 总集数未知（0）时只说到第几话：编一个总数出来比不显示更糟。
  * Bangumi 的 sort 可能是 1.5 这种（OVA/特别篇），整数就不拖小数点。
  */
 function progressText(item: IUserAnime): string {
-  const seen = Number.isInteger(item.watched_episode)
-    ? String(item.watched_episode)
-    : String(item.watched_episode)
-  return item.total_episodes > 0
-    ? `看到 ${seen} / 共 ${item.total_episodes} 集`
-    : `看到第 ${seen} 集`
+  const seen = String(item.watched_episode)
+  const total = String(item.total_episodes)
+  return item.total_episodes > 0 ? `看到第 ${seen} 话 / 共 ${total} 话` : `看到第 ${seen} 话`
 }
 
 function goDetail(id: number) {
