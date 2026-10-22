@@ -425,6 +425,18 @@ POST /internal/retrieve                       ← 纯检索，不碰 LLM
      已回滚（Qdrant 快照恢复，未重新 embedding）。
      → 推论：**「看起来是 bug 的数据特征」不一定该修**，它可能在补偿别处的不足。
 
+- 🗺️ **2026-10-23 方向调整**：M5（站内语料 + 权限隔离）**不做**；AI 助手部分转为收尾，
+  后续新增两条线：**台词 RAG**（优先）与**弹幕库**（先做统计、不做检索）。
+  详细规划见 `danmaku-subtitle-rag-plan.md`。
+- ✅ **2026-10-23 AI 助手收尾完成**（三项，均为可运维性而非调匹配度）：
+  ① 检索策略/开关改为配置（`ai.retrieval.strategy|enabled`），实测改配置即生效；
+  ② `search_knowledge` 两级降级（kill switch + 异常兜底），Qdrant 抖动不再让对话 500；
+  ③ **修掉一个真实故障**：工具失败时 LangChain4j 默认把原始异常塞回模型，
+     模型看不懂 nginx 的 500 HTML 就反复重试，5 次后整轮对话报错、用户看不到任何回答。
+     改为 `ToolExecutionErrorHandler` 返回可照做的中文提示（说清坏了、要求停止重试、禁止编造）。
+     实测：调 5 次 + error + 回答长度 0 → **调 1 次 + STOP + 可读提示**，且不编造数据。
+     同时新增 `eval/check_tool_routing.py`（对话级工具路由验收，首次运行就抓出上述故障）
+     与 `AnimeToolsDegradeTest`（5 项，不联网）。全量 `mvn clean test` 80 项全绿。
 - 📌 下一步（按性价比）：**显式重复 `meta_tags` 做 term weighting** —— 这是负结果②
   直接指向的方向，改一行 + 重导约 3.7 分钟，看能否超过 0.8056。其次才是扩充 golden set
   （现 12 条，C2/S1 这类单点样本对结论影响偏大）。
