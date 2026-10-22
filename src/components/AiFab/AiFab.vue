@@ -252,45 +252,49 @@ function openLogin() {
 </script>
 
 <style scoped lang="less">
+/*
+ * 不做成圆形头像：这里是一个**透明立绘**（像桌面挂件那样立在页面角上），
+ * 所以没有背景、没有边框、没有圆角，投影用 drop-shadow 沿人物轮廓走而不是方形阴影。
+ *
+ * 位移用独立的 translate、缩放用独立的 scale —— 这样 hover 的抬升与点击回弹
+ * 可以同时生效，不会因为都在 transform 里而互相覆盖（动画期间 hover 位移被吃掉）。
+ */
 .ai-fab {
   position: fixed;
-  right: 24px;
-  bottom: 28px;
+  right: 18px;
+  bottom: 14px;
   z-index: 1800;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 64px;
-  height: 64px;
+  width: 84px;
+  height: 84px;
   padding: 0;
-  overflow: hidden;
   cursor: pointer;
-  background: var(--aside-bg-color);
-  border: 2px solid var(--primary-color);
-  border-radius: 50%;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 28%);
-  transition: box-shadow 0.18s ease;
-  // 缩放交给 :active 与回弹动画，这里只处理阴影，避免两套 transform 互相打断
-  will-change: transform;
+  background: transparent;
+  border: 0;
+  translate: 0 0;
+  scale: 1;
+  filter: drop-shadow(0 6px 10px rgb(0 0 0 / 35%));
+  transition: translate 0.22s ease, scale 0.22s ease, filter 0.22s ease;
 
   &:hover {
-    // 与全站卡片一致的 hover 光晕
-    box-shadow: 0 10px 26px rgb(104 198 189 / 45%);
+    translate: 0 -4px;
+    scale: 1.05;
+    filter: drop-shadow(0 12px 18px rgb(104 198 189 / 45%));
   }
 
-  // 按下即时缩小（松开后由 --pop 接管，做过冲回弹）
+  // 按下即时缩小（松开后由 --pop 做过冲回弹）
   &:active {
-    transform: scale(0.9);
-    transition: transform 0.08s ease;
+    scale: 0.9;
+    transition: scale 0.08s ease;
   }
 
   &__img {
     display: block;
     width: 100%;
     height: 100%;
-    // 原图人物偏上，圆形裁切时把脸往中间带一点
-    object-fit: cover;
-    object-position: 50% 32%;
+    // ⚠️ 全局 `assets/css` 里有 `#app img { object-fit: cover }`，
+    // 是 ID 选择器，优先级压过任何 class 规则 —— 不加 !important 这里永远不生效。
+    // 立绘必须完整显示、不能被裁切，所以显式提权。
+    object-fit: contain !important;
     user-select: none;
     // 点击必须落在 button 上，否则 v-track 与 click 都拿不到
     pointer-events: none;
