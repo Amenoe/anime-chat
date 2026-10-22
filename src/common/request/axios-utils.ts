@@ -196,6 +196,16 @@ export default class AxiosUtils {
           handleUnauthorized(messageOf(payload) || messageOf(error))
           return Promise.reject(error)
         }
+        /*
+         * 静默请求（`X-Silent: 1`）传 404 时直接失败、不弹通知。
+         *
+         * 场景：播放页把「看到第几集」写到追番记录，如果这部根本没收藏，
+         * PATCH 会 404 —— 那是**正常情况**而不是错误，弹红色提示只会让人以为出 bug 了。
+         * 只对 404 静默：401 仍要走去重与 token 刷新，不能在这里一刀切掉。
+         */
+        if (status === 404 && error.config?.headers?.['X-Silent']) {
+          return Promise.reject(error)
+        }
         if (status === 500) {
           ElNotification({
             type: 'error',

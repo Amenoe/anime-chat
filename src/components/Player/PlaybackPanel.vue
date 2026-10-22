@@ -102,6 +102,8 @@ import {
   saveCatalogCache,
 } from '@/utils/media-catalog-cache'
 import { addPlayHistory } from '@/utils/play-history'
+import { reportWatchedEpisode } from '@/api/user-anime'
+import { useLoginStore } from '@/stores/modules/login'
 import AnimePlayer from './AnimePlayer.vue'
 
 const props = defineProps<{
@@ -111,6 +113,8 @@ const props = defineProps<{
   /** 封面图（用于最近播放记录） */
   cover?: string
 }>()
+
+const loginStore = useLoginStore()
 
 type RowStatus = 'pending' | 'searching' | 'done' | 'empty' | 'error'
 
@@ -287,8 +291,20 @@ async function playCandidate(c: PlayCandidate) {
 }
 
 /** 点集：打开抽屉，并行搜各启用站点；任一源有结果即可点播放 */
+/**
+ * 上报「看到第几集」给追番记录。
+ *
+ * 不 await、失败静默：这是副产物，不能挡住播放。
+ * 没收藏这部时服务端会 404，拦截器按 X-Silent 跳过提示。
+ */
+function reportWatched(sort: number) {
+  if (!loginStore.accessToken) return
+  void reportWatchedEpisode(props.bangumiId, sort).catch(() => undefined)
+}
+
 async function playEpisode(sort: number) {
   episodeSort.value = sort
+  reportWatched(sort)
   searchingEpisode.value = sort
   const keyword = (props.title || '').trim()
   if (!keyword) return

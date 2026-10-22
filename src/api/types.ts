@@ -124,6 +124,10 @@ export interface IUserAnime {
   title: string | null
   name_cn: string | null
   cover: string | null
+  /** 看到第几集（Bangumi 的 sort，可能带小数）；0 = 还没开始 */
+  watched_episode: number
+  /** 总集数；0 = 未知 */
+  total_episodes: number
   create_time: string
   update_time: string
 }
@@ -134,4 +138,8 @@ export interface IUserAnimePayload {
   title?: string
   name_cn?: string
   cover?: string
+  /** 看到第几集，播放页上报 */
+  watched_episode?: number
+  /** 总集数，追番时从详情带上 */
+  total_episodes?: number
 }

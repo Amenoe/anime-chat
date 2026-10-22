@@ -12,11 +12,30 @@ export function upsertUserAnime(data: IUserAnimePayload) {
 /** 修改追番状态 / 元数据 */
 export function updateUserAnime(
   bangumiId: number,
-  data: Partial<Pick<IUserAnimePayload, 'status' | 'title' | 'name_cn' | 'cover'>>,
+  data: Partial<
+    Pick<
+      IUserAnimePayload,
+      'status' | 'title' | 'name_cn' | 'cover' | 'watched_episode' | 'total_episodes'
+    >
+  >,
 ) {
   return request.patch<IUserAnime>({
     url: `/user-anime/${bangumiId}`,
     data,
+  })
+}
+
+/**
+ * 播放页上报「看到第几集」。
+ *
+ * **静默**（X-Silent）：这部没收藏时 PATCH 会 404，那是正常情况而不是错误 ——
+ * 每次点集都弹一个红色提示会让人以为坏了。
+ */
+export function reportWatchedEpisode(bangumiId: number, watched_episode: number) {
+  return request.patch<IUserAnime>({
+    url: `/user-anime/${bangumiId}`,
+    data: { watched_episode },
+    headers: { 'X-Silent': '1' },
   })
 }
 

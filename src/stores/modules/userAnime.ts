@@ -34,6 +34,9 @@ export const useUserAnimeStore = defineStore('userAnime', () => {
     title?: string
     name_cn?: string
     cover?: string
+    /** 总集数：追番时从详情带上，供追番页显示进度 */
+    total_episodes?: number
+    watched_episode?: number
   }) {
     const row = await upsertUserAnime(payload)
     current.value = row

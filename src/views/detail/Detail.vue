@@ -304,6 +304,8 @@ async function onCollectCommand(cmd: string) {
     title: d?.name,
     name_cn: d?.name_cn,
     cover: d?.images?.large || d?.images?.common,
+    // 总集数在这里存一份，追番列表就不用逐条回查 Bangumi 了
+    total_episodes: d?.eps || 0,
   })
   ElNotification({
     type: 'success',

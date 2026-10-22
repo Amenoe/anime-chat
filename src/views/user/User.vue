@@ -61,6 +61,13 @@
                 </div>
                 <div class="collect-card__meta">
                   <span class="collect-card__tag">{{ userAnimeStore.labelOf(item.status) }}</span>
+                  <!--
+                    观看进度。只在「看过至少一集」时显示 ——
+                    没开始看就摆一个「第 0 集」纯属噪音。
+                  -->
+                  <span v-if="item.watched_episode > 0" class="collect-card__progress">
+                    {{ progressText(item) }}
+                  </span>
                   <el-button link type="danger" @click.stop="onCancel(item.bangumi_id)">
                     取消
                   </el-button>
@@ -248,7 +255,7 @@ import {
   type CatalogPrefs,
 } from '@/utils/media-catalog-cache'
 import type { IFormItem } from '@/components/AppForm/type'
-import type { UserAnimeStatus } from '@/api/types'
+import type { IUserAnime, UserAnimeStatus } from '@/api/types'
 import type { UploadFile } from 'element-plus'
 import AppForm from '@/components/AppForm/AppForm.vue'
 import { formatUtcString } from '@/utils/date-format'
@@ -752,6 +759,21 @@ onMounted(() => {
   }
 })
 
+/**
+ * 进度文案：「看到 3 / 共 13 集」。
+ *
+ * 总集数未知（0）时只说到第几集 —— 编一个总数出来比不显示更糟。
+ * Bangumi 的 sort 可能是 1.5 这种（OVA/特别篇），整数就不拖小数点。
+ */
+function progressText(item: IUserAnime): string {
+  const seen = Number.isInteger(item.watched_episode)
+    ? String(item.watched_episode)
+    : String(item.watched_episode)
+  return item.total_episodes > 0
+    ? `看到 ${seen} / 共 ${item.total_episodes} 集`
+    : `看到第 ${seen} 集`
+}
+
 function goDetail(id: number) {
   router.push(`/detail/${id}`)
 }
@@ -893,6 +915,14 @@ async function onCancel(bangumiId: number) {
     border: 1px solid rgba(104, 198, 189, 0.4);
     border-radius: 10px;
     padding: 2px 8px;
+  }
+
+  // 进度用次要色：它是补充信息，不该和状态标签抢注意力
+  &__progress {
+    margin-left: 8px;
+    font-size: 12px;
+    color: var(--font-unactive-color);
+    white-space: nowrap;
   }
 }
 
