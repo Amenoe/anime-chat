@@ -38,6 +38,7 @@ import { useHomeStore } from '@/stores/modules/home'
 import PlayerPane from '@/components/Room/PlayerPane.vue'
 import ChatPane from '@/components/Room/ChatPane.vue'
 import PlaylistPane from '@/components/Room/PlaylistPane.vue'
+import { reportWatchedEpisode } from '@/api/user-anime'
 
 const route = useRoute()
 const router = useRouter()
@@ -77,6 +78,25 @@ watch(group, (val) => {
     router.replace(animeId ? `/detail/${animeId}` : '/')
   }
 })
+
+/**
+ * 放映室里看到第几集，也写进自己的追番进度。
+ *
+ * 监听的是 `playback_state.episode_sort` —— 它由 socket 广播：
+ * 房主切集时所有 viewer 都会收到，所以**每个人**的追番都会跟着更新，
+ * 而不是只有动手切集的那个人。
+ *
+ * 失败静默（没追这部时服务端 404，拦截器按 X-Silent 跳过提示）。
+ */
+watch(
+  () => roomStore.playbackState?.episode_sort,
+  (sort) => {
+    if (!sort || sort <= 0) return
+    const animeId = group.value?.anime_id
+    if (!animeId) return
+    void reportWatchedEpisode(animeId, sort).catch(() => undefined)
+  },
+)
 
 onBeforeUnmount(() => {
   roomStore.leaveRoom()
