@@ -159,6 +159,19 @@ HTML5 History mode, all routes lazy-loaded. No route guards — auth checks happ
   抽屉头部有「展开为完整页」按钮承接这个需求。
 
 未登录时只渲染引导、**不发任何 `/api/ai/*` 请求**（与 `/ai` 页同一套门禁策略）。
+气泡的**形象是透明立绘**（不是圆形头像，也不是带边框的气泡）：素材取自本机
+`dsh-whale-widget` 插件的 `DSniang1.png`（缩到 192px 后 47KB），音效取其 `Ya1.mp3`（264ms）。
+
+两个踩过的实现点：
+
+- **位移与缩放要用独立的 `translate` / `scale` 属性**，不要都塞进 `transform`。
+  回弹动画作用于 `scale` 时会把 hover 的 `translateY` 一起覆盖，动画期间画面会跳一下。
+- ⚠️ **全局 `assets/css` 里有 `#app img { object-fit: cover }`**（ID 选择器）。
+  它优先级压过任何 class 规则，所以立绘的 `object-fit: contain` 必须加 `!important`
+  才生效 —— 否则图片会被裁切，而这个问题只有实际渲染才看得出来，type-check 不会报。
+
+音效**绝不阻断主流程**：浏览器拒绝自动播放或被静音时静默吞掉，抽屉照常打开；
+`Audio` 元素只创建一次。回弹与过渡都尊重 `prefers-reduced-motion`。
 
 AI 助手 `/ai` 同样**不加路由守卫**，而是在页面内做门禁：未登录只渲染 `.ai-gate` 登录引导，
 **不渲染对话区、不发任何 `/api/ai/*` 请求**（`onMounted` 里 `if (!isLogin) return`）。
