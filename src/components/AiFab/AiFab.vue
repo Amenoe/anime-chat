@@ -301,6 +301,8 @@ function openLogin() {
   cursor: pointer;
   background: transparent;
   border: 0;
+  // 触摸端消除点击延迟与双击缩放，否则手机上按下去会有明显的「不跟手」
+  touch-action: manipulation;
   translate: 0 0;
   scale: 1;
   filter: drop-shadow(0 8px 14px rgb(0 0 0 / 35%));
@@ -356,6 +358,29 @@ function openLogin() {
 
 .ai-fab--pop {
   animation: fab-pop 0.46s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/*
+ * 小屏适配：立绘缩小并贴近角落。
+ * 128px 在手机上会占掉右下角相当一块可点区域，而那里的内容（卡片、播放控件）
+ * 本来就更挤 —— 宁可让它小一点，也别挡住用户要点的东西。
+ */
+@media (max-width: 768px) {
+  .ai-fab {
+    right: 10px;
+    bottom: 8px;
+    width: 96px;
+    height: 96px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ai-fab {
+    right: 8px;
+    bottom: 6px;
+    width: 80px;
+    height: 80px;
+  }
 }
 
 // 尊重系统的「减少动态效果」设置
