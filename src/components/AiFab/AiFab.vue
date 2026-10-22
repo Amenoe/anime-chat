@@ -7,10 +7,12 @@
     v-if="!hidden"
     v-track="'ai.fab.open'"
     class="ai-fab"
-    :aria-label="open ? '收起番剧助手' : '打开番剧助手'"
-    @click="open = true"
+    :class="{ 'ai-fab--pop': popping }"
+    aria-label="打开番剧助手"
+    @click="onOpenFab"
+    @animationend="popping = false"
   >
-    <el-icon :size="22"><ChatDotRound /></el-icon>
+    <img class="ai-fab__img" :src="whaleImg" alt="" draggable="false" />
   </button>
 
   <el-drawer
@@ -111,7 +113,6 @@
 
 <script setup lang="ts">
 import {
-  ChatDotRound,
   Close,
   FullScreen,
   Key,
@@ -120,6 +121,8 @@ import {
   Promotion,
   VideoPause,
 } from '@element-plus/icons-vue'
+import whaleImg from '@/assets/images/whale.png'
+import pressSound from '@/assets/audio/press.mp3'
 import AiMessageItem from '@/views/ai/components/AiMessageItem.vue'
 import LoginDialog from '@/components/Login/LoginDialog.vue'
 import { useAiStore } from '@/stores/modules/ai'
@@ -144,6 +147,10 @@ const route = useRoute()
 const router = useRouter()
 
 const open = ref(false)
+/** 播放一次弹性回弹；由 animationend 复位，避免重复点击时动画不重放 */
+const popping = ref(false)
+/** 音频元素只创建一次：每次点击 new Audio() 会带来看不见的加载与内存开销 */
+const pressAudio = ref<HTMLAudioElement | null>(null)
 const draft = ref('')
 const scrollRef = ref<HTMLElement>()
 const loginRef = ref<InstanceType<typeof LoginDialog>>()
@@ -169,6 +176,8 @@ function syncMobile() {
 onMounted(() => {
   syncMobile()
   window.addEventListener('resize', syncMobile)
+  pressAudio.value = new Audio(pressSound)
+  pressAudio.value.volume = 0.45
 })
 
 onBeforeUnmount(() => {
@@ -212,6 +221,26 @@ function onEnter(e: KeyboardEvent) {
   if (!store.streaming && draft.value.trim()) onSend()
 }
 
+/**
+ * 按下气泡：播一声「呀」并做一次弹性回弹。
+ *
+ * 音效**绝不阻断主流程** —— 浏览器可能因自动播放策略拒绝，或被系统静音，
+ * 这些都不该让抽屉打不开。
+ */
+function onOpenFab() {
+  const audio = pressAudio.value
+  if (audio) {
+    try {
+      audio.currentTime = 0
+      void audio.play().catch(() => undefined)
+    } catch {
+      /* 静默：音效是锦上添花 */
+    }
+  }
+  popping.value = true
+  open.value = true
+}
+
 function onExpand() {
   open.value = false
   void router.push('/ai')
@@ -231,25 +260,77 @@ function openLogin() {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 52px;
-  height: 52px;
+  width: 64px;
+  height: 64px;
   padding: 0;
-  color: #fff;
+  overflow: hidden;
   cursor: pointer;
-  background: var(--primary-color);
-  border: 0;
+  background: var(--aside-bg-color);
+  border: 2px solid var(--primary-color);
   border-radius: 50%;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 22%);
-  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 28%);
+  transition: box-shadow 0.18s ease;
+  // 缩放交给 :active 与回弹动画，这里只处理阴影，避免两套 transform 互相打断
+  will-change: transform;
 
   &:hover {
-    transform: translateY(-2px);
     // 与全站卡片一致的 hover 光晕
-    box-shadow: 0 8px 22px rgb(104 198 189 / 45%);
+    box-shadow: 0 10px 26px rgb(104 198 189 / 45%);
   }
 
+  // 按下即时缩小（松开后由 --pop 接管，做过冲回弹）
   &:active {
-    transform: translateY(0);
+    transform: scale(0.9);
+    transition: transform 0.08s ease;
+  }
+
+  &__img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    // 原图人物偏上，圆形裁切时把脸往中间带一点
+    object-fit: cover;
+    object-position: 50% 32%;
+    user-select: none;
+    // 点击必须落在 button 上，否则 v-track 与 click 都拿不到
+    pointer-events: none;
+  }
+}
+
+/*
+ * 弹性回弹：按下 → 过冲 → 回落。
+ * 关键帧比单纯 transition 更像「果冻」，配合带过冲的 cubic-bezier 再补一层惯性。
+ */
+@keyframes fab-pop {
+  0% {
+    transform: scale(1);
+  }
+  28% {
+    transform: scale(0.86);
+  }
+  60% {
+    transform: scale(1.1);
+  }
+  82% {
+    transform: scale(0.96);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.ai-fab--pop {
+  animation: fab-pop 0.46s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+// 尊重系统的「减少动态效果」设置
+@media (prefers-reduced-motion: reduce) {
+  .ai-fab--pop {
+    animation: none;
+  }
+
+  .ai-fab {
+    transition: none;
   }
 }
 
