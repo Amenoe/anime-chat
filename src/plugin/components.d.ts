@@ -7,6 +7,7 @@ export {}
 
 declare module '@vue/runtime-core' {
   export interface GlobalComponents {
+    AiFab: typeof import('./../components/AiFab/AiFab.vue')['default']
     AnimePlayer: typeof import('./../components/Player/AnimePlayer.vue')['default']
     AppChart: typeof import('./../components/Chart/AppChart.vue')['default']
     AppConfirmHost: typeof import('./../components/AppConfirm/AppConfirmHost.vue')['default']

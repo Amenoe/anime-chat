@@ -33,6 +33,8 @@
       <AppRouter />
     </main>
     <AppConfirmHost />
+    <!-- 全局 AI 悬浮气泡：除 /ai 与全屏放映室外的页面都可用 -->
+    <AiFab />
     <!-- 移动端登录弹窗宿主（复用 AppHeader 的逻辑） -->
     <LoginDialog v-if="isMobile" ref="loginRef" @go-register="showRegisterDialog" />
     <RegisterDialog v-if="isMobile" ref="registerRef" />
@@ -44,6 +46,7 @@ import AppAsideBar from '@/layout/AppAsideBar.vue'
 import AppRouter from '@/layout/AppRouter.vue'
 import AppHeader from '@/layout/AppHeader.vue'
 import AppConfirmHost from '@/components/AppConfirm/AppConfirmHost.vue'
+import AiFab from '@/components/AiFab/AiFab.vue'
 import LoginDialog from '@/components/Login/LoginDialog.vue'
 import RegisterDialog from '@/components/Login/RegisterDialog.vue'
 import { useRouteStore } from '@/stores/modules/route'
