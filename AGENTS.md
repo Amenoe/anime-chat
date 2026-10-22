@@ -145,6 +145,21 @@ HTML5 History mode, all routes lazy-loaded. No route guards — auth checks happ
 `ElMessageBox` 的 `dangerouslyUseHTMLString` —— 那需要把用户昵称拼进 HTML，为了排版
 引入注入口不值得）。
 
+**全局悬浮气泡 `AiFab`**（`components/AiFab/AiFab.vue`，挂在 `App.vue`）。
+右下角按钮 → 右侧抽屉，复用 `ai` store 与 `AiMessageItem`。
+
+三个刻意的设计（改之前先想清楚）：
+
+- **显示范围是有意收窄的**：`/ai` 隐藏（那里已是完整助手）、`/room` 隐藏
+  （全屏播放会被挡住）、其余页面显示。别为了「到处都能用」把 `/room` 放开。
+- **与会话共享同一个 `ai` store**，不是独立实例。好处是从气泡问的内容切到 `/ai`
+  仍是同一条对话；代价是 `streaming` 也共享 —— 所以**关闭抽屉不中断生成**
+  （用户可能想让它写完）。别在抽屉关闭时调 `stop()`。
+- **抽屉里不做会话列表**。它定位是「快速问一句」，翻历史去 `/ai`；
+  抽屉头部有「展开为完整页」按钮承接这个需求。
+
+未登录时只渲染引导、**不发任何 `/api/ai/*` 请求**（与 `/ai` 页同一套门禁策略）。
+
 AI 助手 `/ai` 同样**不加路由守卫**，而是在页面内做门禁：未登录只渲染 `.ai-gate` 登录引导，
 **不渲染对话区、不发任何 `/api/ai/*` 请求**（`onMounted` 里 `if (!isLogin) return`）。
 后端本来就要求 JWT，所以这是体验与隐私问题而非安全问题（对话历史不该在未登录时可窥）。
