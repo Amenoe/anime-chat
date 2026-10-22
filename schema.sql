@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS `user_anime` (
   `title` varchar(255) DEFAULT NULL,
   `name_cn` varchar(255) DEFAULT NULL,
   `cover` varchar(512) DEFAULT NULL,
+  `watched_episode` float NOT NULL DEFAULT 0 COMMENT '看到第几集（Bangumi sort，可为小数）',
+  `total_episodes` int NOT NULL DEFAULT 0 COMMENT '总集数，0=未知',
   `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
   `update_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
   PRIMARY KEY (`id`),
