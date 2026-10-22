@@ -10,7 +10,7 @@
     :class="{ 'ai-fab--pop': popping }"
     aria-label="打开番剧助手"
     @click="onOpenFab"
-    @animationend="popping = false"
+    @animationend="finishPop"
   >
     <img class="ai-fab__img" :src="whaleImg" alt="" draggable="false" />
   </button>
@@ -182,6 +182,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', syncMobile)
+  if (openTimer !== undefined) window.clearTimeout(openTimer)
 })
 
 // 新内容到达就贴底。用 post flush 等 DOM 更新完再算高度，否则拿到的是旧 scrollHeight
@@ -221,13 +222,35 @@ function onEnter(e: KeyboardEvent) {
   if (!store.streaming && draft.value.trim()) onSend()
 }
 
+/** 与 CSS 里 fab-pop 的 0.46s 对齐，多留 80ms 给动画事件派发 */
+const POP_MS = 460
+let openTimer: number | undefined
+
 /**
- * 按下气泡：播一声「呀」并做一次弹性回弹。
+ * 动画播完**之后**再打开抽屉。
+ *
+ * 之前是「点击立刻 open、同时播动画」，结果动画刚起手就被抽屉遮罩盖住，等于白做。
+ * 现在打开动作挪到 animationend。
+ */
+function finishPop() {
+  if (openTimer !== undefined) {
+    window.clearTimeout(openTimer)
+    openTimer = undefined
+  }
+  popping.value = false
+  open.value = true
+}
+
+/**
+ * 按下立绘：播一声「呀」，做完弹性回弹再弹抽屉。
  *
  * 音效**绝不阻断主流程** —— 浏览器可能因自动播放策略拒绝，或被系统静音，
  * 这些都不该让抽屉打不开。
  */
 function onOpenFab() {
+  // 动画期间忽略连点：否则第二次点击会让抽屉在动画中途打开，回弹也来不及播完
+  if (popping.value) return
+
   const audio = pressAudio.value
   if (audio) {
     try {
@@ -237,8 +260,16 @@ function onOpenFab() {
       /* 静默：音效是锦上添花 */
     }
   }
+
+  // 系统开了「减少动态效果」时 CSS 会禁用动画，animationend 永远不会来 —— 直接打开
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    open.value = true
+    return
+  }
+
   popping.value = true
-  open.value = true
+  // 兜底：动画被中断或元素重渲染导致 animationend 丢失时，不能让用户点了没反应
+  openTimer = window.setTimeout(finishPop, POP_MS + 80)
 }
 
 function onExpand() {
@@ -261,24 +292,24 @@ function openLogin() {
  */
 .ai-fab {
   position: fixed;
-  right: 18px;
-  bottom: 14px;
+  right: 16px;
+  bottom: 4px;
   z-index: 1800;
-  width: 84px;
-  height: 84px;
+  width: 128px;
+  height: 128px;
   padding: 0;
   cursor: pointer;
   background: transparent;
   border: 0;
   translate: 0 0;
   scale: 1;
-  filter: drop-shadow(0 6px 10px rgb(0 0 0 / 35%));
+  filter: drop-shadow(0 8px 14px rgb(0 0 0 / 35%));
   transition: translate 0.22s ease, scale 0.22s ease, filter 0.22s ease;
 
   &:hover {
-    translate: 0 -4px;
-    scale: 1.05;
-    filter: drop-shadow(0 12px 18px rgb(104 198 189 / 45%));
+    translate: 0 -5px;
+    scale: 1.04;
+    filter: drop-shadow(0 16px 24px rgb(104 198 189 / 45%));
   }
 
   // 按下即时缩小（松开后由 --pop 做过冲回弹）
