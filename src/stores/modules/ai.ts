@@ -25,8 +25,16 @@ export interface IAiChatMessage {
   tool_results: IAiAnimeCard[] | null
   /** 正在流式输出中 */
   pending?: boolean
-  /** 本轮失败（配额、上游不可用等），内容里是错误文案 */
+  /** 本轮失败（配额、上游不可用等） */
   failed?: boolean
+  /**
+   * 失败原因（后端已转成中文），显示在消息下方。
+   *
+   * ⚠️ 不能再靠 `content ||= message` 传递：模型常常先说几句话才失败，
+   * 那时 content 非空，错误原因会被静默丢弃 —— 实测用户只看到整段红字，
+   * 完全不知道错在哪、还能不能继续。
+   */
+  error?: string
 }
 
 export const useAiStore = defineStore('ai', () => {
@@ -157,8 +165,9 @@ export const useAiStore = defineStore('ai', () => {
             messages.value[assistantIndex].tool_results = [...current, ...subjects]
           },
           onError: (message) => {
-            messages.value[assistantIndex].failed = true
-            messages.value[assistantIndex].content ||= message
+            const msg = messages.value[assistantIndex]
+            msg.failed = true
+            msg.error = message
           },
         },
         controller.signal,
@@ -192,8 +201,9 @@ export const useAiStore = defineStore('ai', () => {
         // 配额用尽与上游故障要能区分开，否则看板上「AI 不可用」无从归因
         track('ai.error', { status: e.status, message })
       } else {
-        messages.value[assistantIndex].failed = true
-        messages.value[assistantIndex].content ||= message
+        const msg = messages.value[assistantIndex]
+        msg.failed = true
+        msg.error = msg.error ?? message
       }
     } finally {
       messages.value[assistantIndex].pending = false

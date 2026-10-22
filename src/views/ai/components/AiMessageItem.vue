@@ -28,6 +28,15 @@
         <div v-if="recommendedCards.length" class="ai-msg__cards">
           <AiAnimeCard v-for="card in visibleCards" :key="card.id" :card="card" />
         </div>
+
+        <!--
+          失败原因要**写在对话下方**，而不是只把正文染红。
+          只变色的话用户既不知道发生了什么，也会误以为「这段内容本身是错的」。
+        -->
+        <div v-if="message.error" class="ai-msg__error">
+          <el-icon class="ai-msg__error-icon"><WarningFilled /></el-icon>
+          <span>{{ message.error }}</span>
+        </div>
         <button
           v-if="hiddenCount > 0 || expanded"
           class="ai-msg__more"
@@ -43,7 +52,7 @@
 </template>
 
 <script setup lang="ts">
-import { MagicStick } from '@element-plus/icons-vue'
+import { MagicStick, WarningFilled } from '@element-plus/icons-vue'
 import type { PropType } from 'vue'
 import { renderMarkdown } from '@/utils/markdown'
 import { resolveAvatarUrl } from '@/utils/avatar'
@@ -276,10 +285,33 @@ const renderedContent = computed(() =>
     animation: ai-caret 1s steps(2) infinite;
   }
 
-  &--failed {
-    .ai-msg__markdown {
-      color: var(--el-color-danger);
-    }
+  /*
+   * 失败**不把正文染红**。
+   * 原来整段 markdown 变成 danger 色，用户会以为「这段内容本身是错的」，
+   * 而且那几句往往是模型刚开始的分析，并没有错 —— 错的是这一轮没跑完。
+   * 现在只在下方用一条独立的错误说明表达，正文保持正常颜色。
+   */
+  &--failed .ai-msg__markdown {
+    opacity: 0.85;
+  }
+
+  &__error {
+    display: flex;
+    gap: 6px;
+    align-items: flex-start;
+    padding: 8px 10px;
+    margin-top: 10px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--el-color-danger);
+    background: var(--el-color-danger-light-9);
+    border-left: 3px solid var(--el-color-danger);
+    border-radius: 4px;
+  }
+
+  &__error-icon {
+    flex-shrink: 0;
+    margin-top: 2px;
   }
 }
 

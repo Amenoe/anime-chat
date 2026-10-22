@@ -56,6 +56,17 @@
       </div>
 
       <template v-else>
+        <!-- 整页级错误（配额用尽 / 上游不可用）：抽屉原来不显示，用户只会看到空气泡 -->
+        <el-alert
+          v-if="store.errorMsg"
+          class="panel__alert"
+          type="warning"
+          :closable="true"
+          show-icon
+          :title="store.errorMsg"
+          @close="store.clearError()"
+        />
+
         <div ref="scrollRef" class="panel__body">
           <div v-if="!store.messages.length" class="panel__welcome">
             <p class="panel__welcome-title">想问点什么？</p>
@@ -448,6 +459,10 @@ function openLogin() {
     margin: 0;
     font-size: 13px;
     color: var(--font-unactive-color);
+  }
+
+  &__alert {
+    margin: 10px 16px 0;
   }
 
   &__body {
