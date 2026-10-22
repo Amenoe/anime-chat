@@ -68,6 +68,20 @@ Two unplugin plugins handle auto-imports — this is critical to understand:
 
 When you see these used without imports in `.vue` files, it's intentional.
 
+⚠️ **函数式 API 的样式不会被自动引入**（踩过的坑）。`<ElButton>` 这类出现在模板里的组件
+由 resolver 自动带样式，但 `ElMessageBox.confirm()` / `ElMessage.success()` /
+`ElNotification()` 是**命令式调用**，resolver 扫不到它们 —— 样式为 0 条规则，
+表现为弹窗只剩文字浮在页面上、没有卡片背景、位置也不居中。
+新用到这类 API 时，在 `main.ts` 里按需补一份样式：
+
+```ts
+import 'element-plus/es/components/message-box/style/css'
+import 'element-plus/es/components/message/style/css'
+```
+
+不要图省事引入 `element-plus/dist/index.css` —— 那会把按需引入的体积优势一次性还回去。
+排查方法是数样式规则：在控制台遍历 `document.styleSheets` 统计 `.el-xxx` 的选择器条数。
+
 ## Architecture
 
 ### Path Aliases (in vite.config.ts + tsconfig.json)
