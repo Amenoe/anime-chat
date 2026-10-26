@@ -26,7 +26,20 @@
       <span v-if="session.errorMessage" class="err">{{ session.errorMessage }}</span>
     </div>
 
-    <AnimePlayer v-if="playUrl" :url="playUrl" :title="title" />
+    <AnimePlayer
+      v-if="playUrl"
+      :url="playUrl"
+      :title="title"
+      :danmaku="danmakuItems"
+      :danmaku-enabled="danmakuOn"
+    />
+
+    <div v-if="playUrl" class="player-toolbar">
+      <el-switch v-model="danmakuOn" size="small" />
+      <span class="player-toolbar__label">
+        弹幕{{ danmakuItems.length ? ` · ${danmakuItems.length} 条` : '（本集暂无）' }}
+      </span>
+    </div>
 
     <!-- 点集搜源抽屉：有结果即可点，不必等全部搜完 -->
     <el-drawer
@@ -105,6 +118,8 @@ import { addPlayHistory } from '@/utils/play-history'
 import { reportWatchedEpisode } from '@/api/user-anime'
 import { useLoginStore } from '@/stores/modules/login'
 import AnimePlayer from './AnimePlayer.vue'
+import { fetchDanmaku, type IDanmakuItem } from '@/api/danmaku'
+import type { DanmakuItem } from './danmaku'
 
 const props = defineProps<{
   bangumiId: number
@@ -115,6 +130,13 @@ const props = defineProps<{
 }>()
 
 const loginStore = useLoginStore()
+
+/** 当前集的弹幕；null 表示还没拉到或没有 */
+const danmakuItems = ref<DanmakuItem[]>([])
+/** 弹幕开关，默认开；用户关掉后本集内记住 */
+const danmakuOn = ref(true)
+/** 防止切集时旧请求覆盖新集 */
+let danmakuToken = 0
 
 type RowStatus = 'pending' | 'searching' | 'done' | 'empty' | 'error'
 
@@ -302,9 +324,30 @@ function reportWatched(sort: number) {
   void reportWatchedEpisode(props.bangumiId, sort).catch(() => undefined)
 }
 
+/**
+ * 拉当前集的弹幕。
+ *
+ * 失败**完全静默**：弹幕是锦上添花，拉不到不该让播放出任何提示。
+ * 用 token 防止切集过快时旧响应覆盖新集（实测连点两集会看到上一集的弹幕）。
+ */
+async function loadDanmaku(sort: number) {
+  const token = ++danmakuToken
+  danmakuItems.value = []
+  const title = (props.title || '').trim()
+  if (!title || sort <= 0) return
+  try {
+    const result = await fetchDanmaku(title, sort)
+    if (token !== danmakuToken) return
+    danmakuItems.value = (result?.items ?? []) as DanmakuItem[]
+  } catch {
+    /* 静默：没有弹幕不影响看番 */
+  }
+}
+
 async function playEpisode(sort: number) {
   episodeSort.value = sort
   reportWatched(sort)
+  void loadDanmaku(sort)
   searchingEpisode.value = sort
   const keyword = (props.title || '').trim()
   if (!keyword) return
@@ -428,6 +471,18 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="less">
+.player-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+
+  &__label {
+    font-size: 13px;
+    color: var(--font-unactive-color);
+  }
+}
+
 @accent: var(--primary-color);
 
 .playback-panel {

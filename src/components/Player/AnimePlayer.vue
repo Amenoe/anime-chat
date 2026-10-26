@@ -8,6 +8,7 @@
 <script setup lang="ts">
 import Artplayer from 'artplayer'
 import Hls from 'hls.js'
+import { DanmakuLayer, type DanmakuItem } from './danmaku'
 
 const props = defineProps<{
   /** 可播放 URL（已含 token 的 stream 或 m3u8） */
@@ -18,6 +19,10 @@ const props = defineProps<{
   controlled?: boolean
   /** 当前房间同步的播放状态，用于播放器首次就绪时决定是否播放 */
   paused?: boolean
+  /** 弹幕列表；为空则不渲染弹幕层 */
+  danmaku?: DanmakuItem[]
+  /** 弹幕开关（父组件持有状态，播放器只负责呈现） */
+  danmakuEnabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -31,10 +36,15 @@ const emit = defineEmits<{
 const elRef = ref<HTMLDivElement | null>(null)
 const hint = ref('')
 let player: Artplayer | null = null
+let danmakuLayer: DanmakuLayer | null = null
 /** 用户手动暂停标记：暂停后缓冲触发的 play 事件应忽略 */
 let userPaused = false
 
 function destroy() {
+  if (danmakuLayer) {
+    danmakuLayer.destroy()
+    danmakuLayer = null
+  }
   if (player) {
     try {
       player.destroy(false)
@@ -106,6 +116,17 @@ function createPlayer(url: string) {
 
   player = new Artplayer(options)
 
+  /*
+   * 弹幕层挂在播放器容器内、控件之下：
+   * 挂到外层容器会盖住全屏时的控件，挂进 .art-layers 则跟随 Artplayer 的层级管理。
+   */
+  const layerHost = elRef.value?.querySelector('.art-video-player') as HTMLElement | null
+  if (layerHost) {
+    danmakuLayer = new DanmakuLayer(layerHost)
+    danmakuLayer.setItems(props.danmaku ?? [])
+    danmakuLayer.setEnabled(props.danmakuEnabled !== false)
+  }
+
   // 手动触发首次播放（autoplay:false 避免暂停后缓冲自动续播）
   player.on('ready', () => {
     if (player && !props.controlled && !props.paused) {
@@ -116,20 +137,31 @@ function createPlayer(url: string) {
   player.on('video:timeupdate', () => {
     if (player) emit('timeupdate', player.currentTime)
   })
+  // 弹幕由 timeupdate 驱动：它是唯一能保证「时间轴推进」的事件
+  player.on('video:timeupdate', () => {
+    if (player && danmakuLayer) danmakuLayer.update(player.currentTime)
+  })
   player.on('play', () => {
     // 缓冲区就绪后浏览器可能自动触发 play，若用户手动暂停过则忽略
     if (userPaused && player) {
       player.pause()
       return
     }
+    danmakuLayer?.setPaused(false)
     if (player) emit('play', player.currentTime)
   })
   player.on('pause', () => {
     userPaused = true
+    // 暂停时冻结在飞的弹幕（只停发射的话，屏幕上那批会继续跑完，很怪）
+    danmakuLayer?.setPaused(true)
     if (player) emit('pause', player.currentTime)
   })
   player.on('seek', () => {
-    if (player) emit('seek', player.currentTime)
+    if (player) {
+      // 拖进度条后必须重置游标，否则往回拖时后面的弹幕永远不再出现
+      danmakuLayer?.reset(player.currentTime)
+      emit('seek', player.currentTime)
+    }
   })
 
   player.on('error', () => {
@@ -137,6 +169,22 @@ function createPlayer(url: string) {
     emit('error')
   })
 }
+
+/** 弹幕数据换集时整体替换（父组件拉到新弹幕后调用） */
+watch(
+  () => props.danmaku,
+  (items) => {
+    danmakuLayer?.setItems(items ?? [])
+    // 换集后游标必须回到 0，否则新弹幕一条都不会发射
+    if (player) danmakuLayer?.reset(player.currentTime)
+  },
+)
+
+/** 弹幕开关 */
+watch(
+  () => props.danmakuEnabled,
+  (on) => danmakuLayer?.setEnabled(on !== false),
+)
 
 function seekTo(time: number) {
   if (player) player.currentTime = time
@@ -184,6 +232,11 @@ defineExpose({ seekTo, setPaused, getPlayer, clearHint })
 </script>
 
 <style scoped lang="less">
+/*
+ * 弹幕样式必须是**全局**的：节点由 danmaku.ts 动态创建，拿不到 scoped 的 data-v 属性，
+ * 写在 scoped 里会完全不生效（踩过）。
+ */
+
 .anime-player {
   width: 100%;
   border-radius: 12px;
