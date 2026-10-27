@@ -1,0 +1,5 @@
+# pnpm 10+ 的构建脚本审批：只有列在这里的包允许跑 postinstall。
+# esbuild（vite 依赖）与 vue-demi（pinia/vueuse 依赖）都需要它，否则各自装不上二进制/补丁。
+allowBuilds:
+  esbuild: true
+  vue-demi: true

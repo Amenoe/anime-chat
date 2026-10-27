@@ -26,20 +26,10 @@
       <span v-if="session.errorMessage" class="err">{{ session.errorMessage }}</span>
     </div>
 
-    <AnimePlayer
-      v-if="playUrl"
-      :url="playUrl"
-      :title="title"
-      :danmaku="danmakuItems"
-      :danmaku-enabled="danmakuOn"
-    />
+    <AnimePlayer v-if="playUrl" :url="playUrl" :title="title" :danmaku="danmakuItems" />
 
-    <div v-if="playUrl" class="player-toolbar">
-      <el-switch v-model="danmakuOn" size="small" />
-      <span class="player-toolbar__label">
-        弹幕{{ danmakuItems.length ? ` · ${danmakuItems.length} 条` : '（本集暂无）' }}
-      </span>
-    </div>
+    <!-- 开关在播放器控制栏上（artplayer-plugin-danmuku 自带），这里只报条数 -->
+    <p v-if="playUrl && danmakuItems.length === 0" class="player-toolbar__label">本集暂无弹幕</p>
 
     <!-- 点集搜源抽屉：有结果即可点，不必等全部搜完 -->
     <el-drawer
@@ -118,8 +108,8 @@ import { addPlayHistory } from '@/utils/play-history'
 import { reportWatchedEpisode } from '@/api/user-anime'
 import { useLoginStore } from '@/stores/modules/login'
 import AnimePlayer from './AnimePlayer.vue'
-import { fetchDanmaku, type IDanmakuItem } from '@/api/danmaku'
-import type { DanmakuItem } from './danmaku'
+import { fetchDanmaku } from '@/api/danmaku'
+import type { Danmu } from 'artplayer-plugin-danmuku'
 
 const props = defineProps<{
   bangumiId: number
@@ -131,10 +121,8 @@ const props = defineProps<{
 
 const loginStore = useLoginStore()
 
-/** 当前集的弹幕；null 表示还没拉到或没有 */
-const danmakuItems = ref<DanmakuItem[]>([])
-/** 弹幕开关，默认开；用户关掉后本集内记住 */
-const danmakuOn = ref(true)
+/** 当前集的弹幕 */
+const danmakuItems = ref<Danmu[]>([])
 /** 防止切集时旧请求覆盖新集 */
 let danmakuToken = 0
 
@@ -338,7 +326,7 @@ async function loadDanmaku(sort: number) {
   try {
     const result = await fetchDanmaku(title, sort)
     if (token !== danmakuToken) return
-    danmakuItems.value = (result?.items ?? []) as DanmakuItem[]
+    danmakuItems.value = result
   } catch {
     /* 静默：没有弹幕不影响看番 */
   }
@@ -471,16 +459,10 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="less">
-.player-toolbar {
-  display: flex;
-  gap: 8px;
-  align-items: center;
+.player-toolbar__label {
   margin-top: 8px;
-
-  &__label {
-    font-size: 13px;
-    color: var(--font-unactive-color);
-  }
+  font-size: 13px;
+  color: var(--font-unactive-color);
 }
 
 @accent: var(--primary-color);

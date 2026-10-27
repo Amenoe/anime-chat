@@ -8,7 +8,8 @@
 <script setup lang="ts">
 import Artplayer from 'artplayer'
 import Hls from 'hls.js'
-import { DanmakuLayer, type DanmakuItem } from './danmaku'
+import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
+import type { Danmu } from 'artplayer-plugin-danmuku'
 
 const props = defineProps<{
   /** 可播放 URL（已含 token 的 stream 或 m3u8） */
@@ -19,10 +20,8 @@ const props = defineProps<{
   controlled?: boolean
   /** 当前房间同步的播放状态，用于播放器首次就绪时决定是否播放 */
   paused?: boolean
-  /** 弹幕列表；为空则不渲染弹幕层 */
-  danmaku?: DanmakuItem[]
-  /** 弹幕开关（父组件持有状态，播放器只负责呈现） */
-  danmakuEnabled?: boolean
+  /** 弹幕列表；为空则不显示弹幕 */
+  danmaku?: Danmu[]
 }>()
 
 const emit = defineEmits<{
@@ -36,15 +35,18 @@ const emit = defineEmits<{
 const elRef = ref<HTMLDivElement | null>(null)
 const hint = ref('')
 let player: Artplayer | null = null
-let danmakuLayer: DanmakuLayer | null = null
+/** 插件实例（art.plugins.artplayerPluginDanmuku），用于换集热更新弹幕 */
+interface DanmakuHandle {
+  load: (items: Danmu[]) => void
+  show: () => void
+  hide: () => void
+}
+let danmakuPlugin: DanmakuHandle | null = null
 /** 用户手动暂停标记：暂停后缓冲触发的 play 事件应忽略 */
 let userPaused = false
 
 function destroy() {
-  if (danmakuLayer) {
-    danmakuLayer.destroy()
-    danmakuLayer = null
-  }
+  danmakuPlugin = null
   if (player) {
     try {
       player.destroy(false)
@@ -114,18 +116,29 @@ function createPlayer(url: string) {
     }
   }
 
-  player = new Artplayer(options)
-
   /*
-   * 弹幕层挂在播放器容器内、控件之下：
-   * 挂到外层容器会盖住全屏时的控件，挂进 .art-layers 则跟随 Artplayer 的层级管理。
+   * 弹幕用 artplayer-plugin-danmuku。
+   *
+   * `mount` 不传 = 默认挂在**播放器控制栏中部**，开关也在控制栏上（要求如此）。
+   * `emitter: false`：本站没有弹幕发送接口，摆一个发不出去的输入框只会误导人。
    */
-  const layerHost = elRef.value?.querySelector('.art-video-player') as HTMLElement | null
-  if (layerHost) {
-    danmakuLayer = new DanmakuLayer(layerHost)
-    danmakuLayer.setItems(props.danmaku ?? [])
-    danmakuLayer.setEnabled(props.danmakuEnabled !== false)
-  }
+  options.plugins = [
+    artplayerPluginDanmuku({
+      danmuku: props.danmaku ?? [],
+      speed: 8,
+      opacity: 1,
+      fontSize: 25,
+      antiOverlap: true,
+      synchronousPlayback: true,
+      emitter: false,
+      visible: true,
+      margin: [10, '25%'],
+    }),
+  ]
+
+  player = new Artplayer(options)
+  danmakuPlugin =
+    (player.plugins as Record<string, DanmakuHandle> | undefined)?.artplayerPluginDanmuku ?? null
 
   // 手动触发首次播放（autoplay:false 避免暂停后缓冲自动续播）
   player.on('ready', () => {
@@ -137,31 +150,20 @@ function createPlayer(url: string) {
   player.on('video:timeupdate', () => {
     if (player) emit('timeupdate', player.currentTime)
   })
-  // 弹幕由 timeupdate 驱动：它是唯一能保证「时间轴推进」的事件
-  player.on('video:timeupdate', () => {
-    if (player && danmakuLayer) danmakuLayer.update(player.currentTime)
-  })
   player.on('play', () => {
     // 缓冲区就绪后浏览器可能自动触发 play，若用户手动暂停过则忽略
     if (userPaused && player) {
       player.pause()
       return
     }
-    danmakuLayer?.setPaused(false)
     if (player) emit('play', player.currentTime)
   })
   player.on('pause', () => {
     userPaused = true
-    // 暂停时冻结在飞的弹幕（只停发射的话，屏幕上那批会继续跑完，很怪）
-    danmakuLayer?.setPaused(true)
     if (player) emit('pause', player.currentTime)
   })
   player.on('seek', () => {
-    if (player) {
-      // 拖进度条后必须重置游标，否则往回拖时后面的弹幕永远不再出现
-      danmakuLayer?.reset(player.currentTime)
-      emit('seek', player.currentTime)
-    }
+    if (player) emit('seek', player.currentTime)
   })
 
   player.on('error', () => {
@@ -171,19 +173,24 @@ function createPlayer(url: string) {
 }
 
 /** 弹幕数据换集时整体替换（父组件拉到新弹幕后调用） */
+/**
+ * 换集时热更新弹幕。
+ *
+ * 用插件的 load() 而不是重建播放器：重建会丢播放进度、并让观众端重新同步一次。
+ * 插件内部会把游标重置到当前时间，不需要我们再算。
+ */
 watch(
   () => props.danmaku,
   (items) => {
-    danmakuLayer?.setItems(items ?? [])
-    // 换集后游标必须回到 0，否则新弹幕一条都不会发射
-    if (player) danmakuLayer?.reset(player.currentTime)
+    // 兜底重新取一次：插件在 `new Artplayer()` 后即可用（实测），
+    // 但若将来它在 ready 之后才挂载，这里的重取能避免「换集后弹幕不更新」。
+    if (!danmakuPlugin && player) {
+      danmakuPlugin =
+        (player.plugins as Record<string, DanmakuHandle> | undefined)?.artplayerPluginDanmuku ??
+        null
+    }
+    danmakuPlugin?.load(items ?? [])
   },
-)
-
-/** 弹幕开关 */
-watch(
-  () => props.danmakuEnabled,
-  (on) => danmakuLayer?.setEnabled(on !== false),
 )
 
 function seekTo(time: number) {

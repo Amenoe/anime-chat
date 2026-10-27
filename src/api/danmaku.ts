@@ -1,7 +1,8 @@
 import request from '@/common/request'
+import type { Danmu } from 'artplayer-plugin-danmuku'
 
-/** 与后端 DanmakuService 的返回契约一致 */
-export interface IDanmakuItem {
+/** 后端返回的单条弹幕（字段名与插件不同：后端用 type，插件用 mode） */
+interface IDanmakuItemRaw {
   time: number
   /** 0=滚动 1=顶部 2=底部 */
   type: 0 | 1 | 2
@@ -13,19 +14,27 @@ export interface IDanmakuResult {
   matchedTitle: string
   matchedEpisode: string
   episodeId: number
-  items: IDanmakuItem[]
+  items: IDanmakuItemRaw[]
   cached: boolean
 }
 
 /**
- * 按番剧名 + 集号取弹幕。
+ * 按番剧名 + 集号取弹幕，**直接返回插件可用的格式**。
  *
- * 走服务端代理：dandanplay 的签名需要 AppSecret，不能下发到浏览器。
- * 查不到时后端返回 null（不是错误），前端表现为「这集没有弹幕」。
+ * 做这层映射而不是改后端：`type` 是后端契约（已有拉取到的数据）、
+ * `mode` 是 artplayer-plugin-danmuku 的字段名，两者只是命名不同，转换放边界最省事。
  */
-export function fetchDanmaku(title: string, episode: number) {
-  return request.get<IDanmakuResult | null>({
+export async function fetchDanmaku(title: string, episode: number): Promise<Danmu[]> {
+  const result = await request.get<IDanmakuResult | null>({
     url: '/danmaku',
     params: { title, episode },
   })
+  return (result?.items ?? []).map((item) => ({
+    text: item.text,
+    time: item.time,
+    color: item.color,
+    mode: item.type,
+    // 弹幕统一描边：浅色画面上纯白字会糊掉
+    border: true,
+  }))
 }

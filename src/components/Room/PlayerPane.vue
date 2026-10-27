@@ -6,6 +6,7 @@
       :title="playbackTitle"
       :controlled="!isHost"
       :paused="playbackState?.paused"
+      :danmaku="danmakuItems"
       @timeupdate="onTimeUpdate"
       @play="onPlay"
       @pause="onPause"
@@ -67,6 +68,8 @@ import { addPlayHistory } from '@/utils/play-history'
 import AnimePlayer from '@/components/Player/AnimePlayer.vue'
 import SourceDrawer from '@/components/Room/SourceDrawer.vue'
 import { useSourceSearch } from '@/composables/useSourceSearch'
+import { fetchDanmaku } from '@/api/danmaku'
+import type { Danmu } from 'artplayer-plugin-danmuku'
 
 const roomStore = useRoomStore()
 const homeStore = useHomeStore()
@@ -89,6 +92,11 @@ const {
   onPlayerError,
 } = sourceSearch
 
+/** 当前集的弹幕（房主与观众都显示） */
+const danmakuItems = ref<Danmu[]>([])
+/** 防止快速切集时旧响应覆盖新集 */
+let danmakuToken = 0
+
 const isHost = computed(() => roomStore.role === 'host')
 const playbackState = computed(() => roomStore.playbackState)
 const currentEpisodeSort = computed(() => playbackState.value?.episode_sort ?? null)
@@ -98,6 +106,30 @@ const bangumiId = computed(() => homeStore.animeDetail?.id ?? 0)
 const animeTitle = computed(() => {
   return homeStore.animeDetail?.name_cn || homeStore.animeDetail?.name || ''
 })
+
+/**
+ * 弹幕跟随**房间的播放集**，而不是「谁点了切集」。
+ *
+ * 监听 `playbackState.episode_sort`：房主切集时 socket 会广播给所有观众，
+ * 所以每个人的画面换集时弹幕也跟着换 —— 这正是「一起看」该有的行为。
+ * 拉取失败静默：没有弹幕不影响看番。
+ */
+watch(
+  () => currentEpisodeSort.value,
+  async (sort) => {
+    const token = ++danmakuToken
+    danmakuItems.value = []
+    const title = animeTitle.value.trim()
+    if (!title || !sort || sort <= 0) return
+    try {
+      const items = await fetchDanmaku(title, sort)
+      if (token === danmakuToken) danmakuItems.value = items
+    } catch {
+      /* 静默 */
+    }
+  },
+  { immediate: true },
+)
 
 const playbackTitle = computed(() => {
   return playbackState.value?.title || animeTitle.value || ''
