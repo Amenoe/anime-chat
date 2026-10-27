@@ -22,6 +22,13 @@
         >
       </div>
       <div class="player-pane__actions">
+        <button
+          class="player-pane__source-btn"
+          :disabled="!danmakuItems.length"
+          @click="danmakuOpen = true"
+        >
+          弹幕{{ danmakuItems.length ? ` ${danmakuItems.length}` : '' }}
+        </button>
         <button v-if="isHost" class="player-pane__source-btn" @click="openSearchDrawer">
           选源开播
         </button>
@@ -56,6 +63,8 @@
       @select="onSelectCandidate"
       @closed="onDrawerClosed"
     />
+
+    <DanmakuList v-model="danmakuOpen" :items="danmakuItems" />
   </div>
 </template>
 
@@ -70,6 +79,7 @@ import SourceDrawer from '@/components/Room/SourceDrawer.vue'
 import { useSourceSearch } from '@/composables/useSourceSearch'
 import { fetchDanmaku } from '@/api/danmaku'
 import type { Danmu } from 'artplayer-plugin-danmuku'
+import DanmakuList from '@/components/Player/DanmakuList.vue'
 
 const roomStore = useRoomStore()
 const homeStore = useHomeStore()
@@ -94,6 +104,8 @@ const {
 
 /** 当前集的弹幕（房主与观众都显示） */
 const danmakuItems = ref<Danmu[]>([])
+/** 弹幕列表抽屉 */
+const danmakuOpen = ref(false)
 /** 防止快速切集时旧响应覆盖新集 */
 let danmakuToken = 0
 

@@ -28,8 +28,14 @@
 
     <AnimePlayer v-if="playUrl" :url="playUrl" :title="title" :danmaku="danmakuItems" />
 
-    <!-- 开关在播放器控制栏上（artplayer-plugin-danmuku 自带），这里只报条数 -->
-    <p v-if="playUrl && danmakuItems.length === 0" class="player-toolbar__label">本集暂无弹幕</p>
+    <!-- 开关在播放器控制栏上（artplayer-plugin-danmuku 自带），这里只给列表入口 -->
+    <div v-if="playUrl" class="player-toolbar">
+      <el-button link :disabled="!danmakuItems.length" @click="danmakuOpen = true">
+        弹幕列表{{ danmakuItems.length ? ` · ${danmakuItems.length} 条` : '（本集暂无）' }}
+      </el-button>
+    </div>
+
+    <DanmakuList v-model="danmakuOpen" :items="danmakuItems" />
 
     <!-- 点集搜源抽屉：有结果即可点，不必等全部搜完 -->
     <el-drawer
@@ -110,6 +116,7 @@ import { useLoginStore } from '@/stores/modules/login'
 import AnimePlayer from './AnimePlayer.vue'
 import { fetchDanmaku } from '@/api/danmaku'
 import type { Danmu } from 'artplayer-plugin-danmuku'
+import DanmakuList from './DanmakuList.vue'
 
 const props = defineProps<{
   bangumiId: number
@@ -123,6 +130,8 @@ const loginStore = useLoginStore()
 
 /** 当前集的弹幕 */
 const danmakuItems = ref<Danmu[]>([])
+/** 弹幕列表抽屉 */
+const danmakuOpen = ref(false)
 /** 防止切集时旧请求覆盖新集 */
 let danmakuToken = 0
 
@@ -459,10 +468,8 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped lang="less">
-.player-toolbar__label {
+.player-toolbar {
   margin-top: 8px;
-  font-size: 13px;
-  color: var(--font-unactive-color);
 }
 
 @accent: var(--primary-color);
