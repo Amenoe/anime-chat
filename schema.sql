@@ -13,7 +13,8 @@ CREATE TABLE IF NOT EXISTS `user` (
   `status` tinyint NOT NULL DEFAULT 0,
   `disabled_at` datetime DEFAULT NULL,
   `disabled_reason` varchar(255) NOT NULL DEFAULT '',
-  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  `create_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),,
+  `danmaku_settings` json DEFAULT NULL COMMENT '播放器弹幕偏好（JSON，字段随播放器升级变化）'
   PRIMARY KEY (`user_id`),
   UNIQUE KEY `IDX_user_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
