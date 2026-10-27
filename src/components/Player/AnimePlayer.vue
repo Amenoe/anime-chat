@@ -10,6 +10,7 @@ import Artplayer from 'artplayer'
 import Hls from 'hls.js'
 import artplayerPluginDanmuku from 'artplayer-plugin-danmuku'
 import type { Danmu } from 'artplayer-plugin-danmuku'
+import { useDanmakuSettings } from '@/composables/useDanmakuSettings'
 
 const props = defineProps<{
   /** 可播放 URL（已含 token 的 stream 或 m3u8） */
@@ -40,13 +41,32 @@ interface DanmakuHandle {
   load: (items: Danmu[]) => void
   show: () => void
   hide: () => void
+  config: (option: Record<string, unknown>) => void
 }
 let danmakuPlugin: DanmakuHandle | null = null
+
+const danmakuSettings = useDanmakuSettings()
 /** 用户手动暂停标记：暂停后缓冲触发的 play 事件应忽略 */
 let userPaused = false
 
+/**
+ * 用户任何一次按下（点播放按钮、点画面、拖进度条）都视为「他想让播放器动起来」，
+ * 于是解除 userPaused。
+ *
+ * 用捕获阶段：pointerdown 必然早于 Artplayer 内部触发的 play，
+ * 所以 play 事件到达时标记已是 false，不会被误拦。
+ * 缓冲导致的自动 play 没有 pointerdown，标记保持 true，仍会被拦下 —— 正是想要的行为。
+ *
+ * 这个函数是修「暂停后无法继续播放」的关键：原来标记只由 setPaused() 解除，
+ * 而详情页不走放映室同步，于是一次暂停后 play 永远被拦，播放器彻底卡死。
+ */
+function clearUserPaused() {
+  userPaused = false
+}
+
 function destroy() {
   danmakuPlugin = null
+  elRef.value?.removeEventListener('pointerdown', clearUserPaused, true)
   if (player) {
     try {
       player.destroy(false)
@@ -125,6 +145,7 @@ function createPlayer(url: string) {
   options.plugins = [
     artplayerPluginDanmuku({
       danmuku: props.danmaku ?? [],
+      // 默认值；用户保存过的偏好覆盖它们（见下面的 config 应用）
       speed: 8,
       opacity: 1,
       fontSize: 25,
@@ -133,6 +154,7 @@ function createPlayer(url: string) {
       emitter: false,
       visible: true,
       margin: [10, '25%'],
+      ...danmakuSettings.settings.value,
     }),
   ]
 
@@ -151,13 +173,21 @@ function createPlayer(url: string) {
     if (player) emit('timeupdate', player.currentTime)
   })
   player.on('play', () => {
-    // 缓冲区就绪后浏览器可能自动触发 play，若用户手动暂停过则忽略
+    /*
+     * 忽略「非用户发起」的自动播放：用户手动暂停后，缓冲就绪时浏览器可能自己 play。
+     *
+     * ⚠️ `userPaused` 必须能被用户操作解除，否则一次暂停就再也播不了 ——
+     * 这里靠下面的 pointerdown 解除（用户点播放按钮时先触发 pointerdown）。
+     */
     if (userPaused && player) {
       player.pause()
       return
     }
     if (player) emit('play', player.currentTime)
   })
+
+  // 用户一按下就解除暂停标记（说明见模块级 clearUserPaused）
+  elRef.value?.addEventListener('pointerdown', clearUserPaused, true)
   player.on('pause', () => {
     userPaused = true
     if (player) emit('pause', player.currentTime)
