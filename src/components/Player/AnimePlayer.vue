@@ -46,6 +46,9 @@ interface DanmakuHandle {
 let danmakuPlugin: DanmakuHandle | null = null
 
 const danmakuSettings = useDanmakuSettings()
+
+/** 正在把「服务端读回的偏好」应用给插件；期间不要回写，避免无谓请求 */
+let applyingRemote = false
 /** 用户手动暂停标记：暂停后缓冲触发的 play 事件应忽略 */
 let userPaused = false
 
@@ -161,6 +164,44 @@ function createPlayer(url: string) {
   player = new Artplayer(options)
   danmakuPlugin =
     (player.plugins as Record<string, DanmakuHandle> | undefined)?.artplayerPluginDanmuku ?? null
+
+  /*
+   * 应用用户已保存的弹幕偏好。
+   *
+   * 必须显式 load()：`settings` 是模块级单例，只有 load 过才有值；
+   * 上面 `...danmakuSettings.settings.value` 展开的是**上一次 load 的结果**，
+   * 首次进站时它是空的 —— 这也是「换了部番设置就重置」的根因：
+   * 换番会重建播放器，若从未 load 过就永远拿默认值。
+   */
+  void danmakuSettings.load().then(() => {
+    const saved = danmakuSettings.settings.value
+    if (!danmakuPlugin || !Object.keys(saved).length) return
+    // 应用期间不要回写：插件的 config() 内部会 emit 一次 config，
+    // 不挡住的话刚读回来的值又被存一遍，纯属多余请求。
+    applyingRemote = true
+    try {
+      danmakuPlugin.config(saved as Record<string, unknown>)
+    } finally {
+      applyingRemote = false
+    }
+  })
+
+  // 用户在控制栏开关 / 设置面板里改动 → 记下来
+  // 插件自定义事件不在 Artplayer 的类型声明里，用 any 承接（值仍是插件的完整 option）
+  player.on(
+    'artplayerPluginDanmuku:config' as never,
+    ((option: unknown) => {
+      if (applyingRemote) return
+      danmakuSettings.save(option as Parameters<typeof danmakuSettings.save>[0])
+    }) as never,
+  )
+  // 开关走的是 hide/show 而不是 config（插件里 visible 由这两个方法维护），单独记
+  player.on('artplayerPluginDanmuku:hide', () => {
+    if (!applyingRemote) danmakuSettings.save({ visible: false })
+  })
+  player.on('artplayerPluginDanmuku:show', () => {
+    if (!applyingRemote) danmakuSettings.save({ visible: true })
+  })
 
   // 手动触发首次播放（autoplay:false 避免暂停后缓冲自动续播）
   player.on('ready', () => {
