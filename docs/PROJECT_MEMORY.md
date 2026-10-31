@@ -1,6 +1,6 @@
 # 动漫放映室 · 项目记忆与任务同步
 
-> 本文件是双仓库（前端 `anime-chat` / 后端 `anime-chat-server`）的公共记忆与任务同步文档。
+> 本文件是单仓（`client/` 前端 / `server/` 后端）的公共记忆与任务同步文档，`docs/` 与代码同仓。
 > 修改代码、推进任务或发现新问题后，请同步更新「任务看板」与「修复记录」。
 > 已废弃 superpowers 框架（2026-08-16），相关文档已清理；此文档取代旧的 specs/plans 作为唯一项目记忆。
 
@@ -23,15 +23,15 @@
 | 项 | 说明 |
 | --- | --- |
 | 前端 | `anime-chat` — Vue 3 + TS + Vite + Pinia + Element Plus + Artplayer + hls.js + socket.io-client |
-| 后端 | `anime-chat-server` — NestJS 9 + TypeORM 0.2 + Socket.IO + MySQL + MinIO + qBittorrent |
+| 后端 | `server/` — NestJS 9 + TypeORM 0.2 + Socket.IO + MySQL + MinIO + qBittorrent |
 | **AI 服务** | **`anime-ai`** — Spring Boot 4.0.8 + Java 21 + LangChain4j 1.20.0（2026-09-21 新增）。只做检索与模型编排，不碰业务数据；监听 8013 |
 | 定位 | 动漫讨论平台 +「放映室」一起看：左播放右聊天、房主强同步、按随机 `season_id` 多厅；AI 助手提供推荐/寻找番剧 |
 | 语言 | 注释、commit、UI 均为中文 |
-| 仓库 | github.com/Amenoe/anime-chat · github.com/Amenoe/anime-chat-server（各自独立 git，分开提交）；`anime-ai`（github.com/Amenoe/anime-ai）；本 `docs/` 为独立文档仓（**暂无远端**） |
+| 仓库 | 单仓 github.com/Amenoe/anime-chat（`client/` + `server/` + `docs/`，版本 tag `v1.0.0`）；AI 服务仍是独立仓库 `anime-ai` |
 
 ### 命令速查
 
-| 动作 | 前端（anime-chat） | 后端（anime-chat-server） | AI 服务（anime-ai） |
+| 动作 | 前端（client/） | 后端（server/） | AI 服务（anime-ai） |
 | --- | --- | --- | --- |
 | 启动 | `pnpm dev`（localhost:8012） | `pnpm start:dev`（localhost:3000） | `mvn spring-boot:run`（localhost:8013） |
 | 类型检查 | `pnpm type-check` | `pnpm exec tsc --noEmit -p tsconfig.build.json` | `mvn -q -B compile` |
@@ -606,7 +606,7 @@ headless Chrome 双场景 —— root 侧边栏出现「管理看板」且 4 个
 4. **CR**：合入前 review 完整 diff（正确性/安全/边界/命名/死代码），阻断项先修再合。
 5. **提交信息**：emoji Angular 中文；subject 小写开头（commitlint 强制）；husky 自动跑 lint-staged（eslint + prettier）。
 6. **合入**：`git merge --no-ff` 回 `main`（保留合入记录）→ `git push origin main` → 删除已合并分支。
-7. **约定**：`.env*` 一律不提交；前后端两个仓库分开提交/推送；`pnpm-lock.yaml` 由 pnpm 维护，prettier ignore。
+7. **约定**：`.env*` 一律不提交；`client/` 与 `server/` 在同一个仓库里提交/推送；`pnpm-lock.yaml` 由 pnpm 维护，prettier ignore。
 8. **文档**：代码/接口/实体有变动时，按 `COGNITION_SYNC.md` §7「改动联动清单」同步 `docs/` 与两仓 README，并更新 §3 看板与 §4 修复记录。
 
 ---
