@@ -13,9 +13,9 @@
 
 ## Project Overview
 
-anime-chat-client — Vue 3 frontend for an anime discussion platform with 「放映室」一起看 (socket.io) and online playback (Artplayer + hls.js). Backend repo: [anime-chat-server](https://github.com/Amenoe/anime-chat-server). The project uses Chinese for comments, commit messages, and UI text.
+anime-chat-client — Vue 3 frontend for an anime discussion platform with 「放映室」一起看 (socket.io) and online playback (Artplayer + hls.js). 后端在同仓 `server/` 目录。 The project uses Chinese for comments, commit messages, and UI text.
 
-跨仓文档（在**工作区根目录** `docs/`，不属于本仓库，但改动前请先读）：
+跨端文档（在**仓库根目录** `docs/`，改动前请先读）：
 
 - `docs/PROJECT_MEMORY.md` — 公共记忆、任务看板、修复记录、Git Ship 流程
 - `docs/api-contract.md` — 接口契约（含双 token 鉴权）

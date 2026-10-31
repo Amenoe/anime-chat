@@ -30,7 +30,7 @@ pnpm build-only   # vite build
 
 环境变量见 `.env.development`（`VITE_SERVE_URL` / `VITE_BASE_API` 等）。
 
-后端仓库：[anime-chat-server](https://github.com/Amenoe/anime-chat-server)
+后端在同仓 `../server`（NestJS）
 
 公共记忆与任务看板：[docs/PROJECT_MEMORY.md](../docs/PROJECT_MEMORY.md) ·
 接口契约：[docs/api-contract.md](../docs/api-contract.md) ·

@@ -7,6 +7,7 @@
     "dev:client": "pnpm --dir client dev",
     "dev:server": "pnpm --dir server start:dev",
     "build": "pnpm --dir client build-only && pnpm --dir server build",
-    "typecheck": "pnpm --dir client type-check"
+    "typecheck": "pnpm --dir client type-check",
+    "prepare": "git config core.hooksPath .husky"
   }
 }

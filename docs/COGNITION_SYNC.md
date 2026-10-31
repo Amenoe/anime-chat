@@ -1,7 +1,7 @@
 # 前后端认知同步
 
-> 双仓库（`anime-chat` 前端 / `anime-chat-server` 后端）**必须共同遵守**的约定。
-> 两端各自的 AI 助手工作规则与代码导览见 `anime-chat/AGENTS.md` 与 `anime-chat-server/AGENTS.md`；AI 服务见 `anime-ai/AGENTS.md`。
+> 单仓两端（`client/` 前端 / `server/` 后端）**必须共同遵守**的约定。
+> 两端各自的 AI 助手工作规则与代码导览见 `../client/AGENTS.md` 与 `../server/AGENTS.md`；AI 服务见独立仓库 `anime-ai/AGENTS.md`。
 > 本文只写「跨仓」的部分——凡是两端要对齐的东西都在这里。
 >
 > 改任何一端前，先确认本文对应小节是否要一起改。
@@ -10,14 +10,14 @@
 
 ## 1. 拓扑
 
-| | 仓库 | 技术栈 | 地址 |
+| | 目录 | 技术栈 | 地址 |
 | --- | --- | --- | --- |
-| 前端 | `anime-chat` | Vue 3.5 + Vite 5.4 + Pinia + Element Plus + Artplayer/hls.js + socket.io-client | `localhost:8012` |
-| 后端 | `anime-chat-server` | NestJS 9 + TypeORM 0.2 + Socket.IO + MySQL + MinIO + qBittorrent | `localhost:3000` |
+| 前端 | `client/` | Vue 3.5 + Vite 5.4 + Pinia + Element Plus + Artplayer/hls.js + socket.io-client | `localhost:8012` |
+| 后端 | `server/` | NestJS 9 + TypeORM 0.2 + Socket.IO + MySQL + MinIO + qBittorrent | `localhost:3000` |
 
 - 前端 dev 把 `/api` 代理到后端（`VITE_BASE_API=/api`），生产由网关转发
 - 后端全局前缀 `api`，静态资源（头像）也挂在 `/api`
-- 两个仓库**各自独立 git**，分开提交/推送；`docs/` 是第三个独立仓库（共享文档）
+- 前端与后端在**同一个仓库**（`client/` + `server/`），`docs/` 也在同一仓库根目录；AI 服务 `anime-ai` 是独立仓库
 - 验证环境的真实端口：**前端 8012、后端 3000**（文档/脚本里出现 5173、8080 一律是错的）
 
 ## 2. 统一响应信封
@@ -180,7 +180,7 @@ NODE_ENV=development node dist/main.js   # 看到 "Nest application successfully
 登出 → 改密 → 删号清理）。脚本已入库，改完直接跑：
 
 ```bash
-cd anime-chat-server && node scripts/auth-e2e.mjs    # 24 项断言，测试账号自动清理
+cd server && node scripts/auth-e2e.mjs    # 24 项断言，测试账号自动清理
 ```
 
 （本次双 token 落地即按此验收 24/24。此前这类脚本放在 `/tmp` 会随重启丢失，故入库。）

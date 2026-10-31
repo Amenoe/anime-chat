@@ -15,7 +15,7 @@
 
 anime-chat-server — NestJS backend for an anime discussion platform with 「放映室」一起看
 (Socket.IO 强同步) and online playback (流媒体 Range 代理 / BT 磁力边下边播).
-Frontend repo: [anime-chat](https://github.com/Amenoe/anime-chat). The project uses Chinese
+前端在同仓 `client/` 目录。The project uses Chinese
 for comments, commit messages, and API messages.
 
 公共记忆与任务看板见根目录 `docs/PROJECT_MEMORY.md`；接口契约 `docs/api-contract.md`；
@@ -34,7 +34,7 @@ pnpm exec prettier --check "src/**/*.ts"                   # 格式检查
 
 ## Commit Convention
 
-Emoji-prefixed Angular-style commits（与前端仓库一致）:
+Emoji-prefixed Angular-style commits（与 client/ 一致）:
 `🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀perf` `🚨test` `📦build` `👷ci` `🔂revert`
 
 ## Bootstrap（`src/main.ts`）

@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+. "$(dirname -- "$0")/_/husky.sh"
+
+# lint-staged 配置与依赖都在 client/ 下
+cd client && npx --no-install lint-staged

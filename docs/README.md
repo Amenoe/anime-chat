@@ -1,8 +1,7 @@
 # anime-chat 共享文档
 
-双仓库（[anime-chat](https://github.com/Amenoe/anime-chat) 前端 /
-[anime-chat-server](https://github.com/Amenoe/anime-chat-server) 后端）的公共文档。
-不属于任一代码仓库，独立提交。
+单仓（`client/` 前端 / `server/` 后端）的公共文档，位于仓库根目录 `docs/`。
+另有独立仓库 `anime-ai`（AI 服务）。
 
 ## 文档地图
 
@@ -14,7 +13,7 @@
 | [`playback-architecture.md`](./playback-architecture.md) | 播放架构：BT/磁力 → 站内播、qBittorrent 部署与限制 |
 | [`schema.sql`](./schema.sql) | 全量表结构（生产建库依据） |
 
-各仓 AI 助手工作规则与代码导览见 `anime-chat/AGENTS.md`（前端）、`anime-chat-server/AGENTS.md`（后端）、`anime-ai/AGENTS.md`（AI 服务）。
+AI 助手工作规则与代码导览见 `../client/AGENTS.md`（前端）、`../server/AGENTS.md`（后端）、`anime-ai/AGENTS.md`（独立 AI 服务）。
 
 ## 维护约定
 

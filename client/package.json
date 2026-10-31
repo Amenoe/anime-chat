@@ -10,7 +10,6 @@
     "type-check": "vue-tsc --noEmit",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
     "web-norm": "web-norm",
-    "prepare": "husky install",
     "pre-commit": "lint-staged",
     "postinstallmac": "git config core.hooksPath .husky && chmod 700 .husky/*",
     "eslint": "eslint  \"{src,mock}/**/*.{vue,ts,js,tsx}\" --fix",
