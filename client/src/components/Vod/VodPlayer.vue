@@ -143,6 +143,8 @@ const playerRef = ref<InstanceType<typeof AnimePlayer> | null>(null)
 
 let pollTimer: ReturnType<typeof setInterval> | null = null
 let searchToken = 0
+/** 本地轮询的会话 id：房主刚创建的会话可能早于 playback:state 广播到达 */
+let pollSessionId = ''
 
 const isHost = computed(() => vodStore.role === 'host')
 const playbackState = computed(() => vodStore.playbackState)
@@ -202,7 +204,7 @@ function stopPoll() {
 }
 
 async function refresh() {
-  const id = activeSessionId.value
+  const id = pollSessionId || activeSessionId.value
   if (!id) return
   try {
     const s = await getPlaybackSession(id)
@@ -218,8 +220,9 @@ async function refresh() {
   }
 }
 
-function startPoll() {
+function startPoll(id?: string) {
   stopPoll()
+  if (id) pollSessionId = id
   pollTimer = setInterval(refresh, 2500)
 }
 
@@ -229,6 +232,7 @@ watch(
   async (id) => {
     if (id && session.value?.id === id && playUrl.value) return
     stopPoll()
+    pollSessionId = id || ''
     session.value = null
     playUrl.value = null
     waitingMeta.value = !!id && isHost.value
@@ -236,7 +240,7 @@ watch(
     await refresh()
     const current = session.value as PlaybackSessionView | null
     if (!current || (current.status !== 'ready' && current.status !== 'failed')) {
-      startPoll()
+      startPoll(id)
     }
   },
   { immediate: true },
@@ -361,7 +365,7 @@ async function refreshById(id: string) {
       waitingMeta.value = false
       playUrl.value = urlFor(s)
     }
-    startPoll()
+    startPoll(id)
   } catch {
     /* 广播回来后会再加载 */
   }
