@@ -34,7 +34,6 @@ export async function fetchDanmaku(title: string, episode: number): Promise<Danm
     time: item.time,
     color: item.color,
     mode: item.type,
-    // 弹幕统一描边：浅色画面上纯白字会糊掉
-    border: true,
+    // 不设 border：描边会让弹幕发脏，纯白字更贴近原版观感（插件默认就不描边）
   }))
 }
