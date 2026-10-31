@@ -93,20 +93,6 @@
         <p class="summary">{{ detailData.summary }}</p>
       </section>
 
-      <!-- 在线播放（BT/磁力 → 服务端下载 → 流式播放） -->
-      <section class="section">
-        <div class="section__header">
-          <span class="section__title">播放</span>
-        </div>
-        <PlaybackPanel
-          ref="playbackRef"
-          :bangumi-id="anime_id"
-          :title="displayName"
-          :alt-title="detailData.name !== detailData.name_cn ? detailData.name : undefined"
-          :cover="detailData.images?.common"
-        />
-      </section>
-
       <!-- 剧集列表 -->
       <section v-if="episodes.length" class="section">
         <div class="section__header">
@@ -165,7 +151,6 @@ import { useHomeStore } from '@/stores/modules/home'
 import { useLoginStore } from '@/stores/modules/login'
 import { useUserAnimeStore } from '@/stores/modules/userAnime'
 import type { UserAnimeStatus } from '@/api/types'
-import PlaybackPanel from '@/components/Player/PlaybackPanel.vue'
 import { listRooms, createRoom } from '@/api/room'
 import { appConfirm } from '@/composables/useConfirm'
 import { addPlayHistory } from '@/utils/play-history'
@@ -177,7 +162,6 @@ const anime_id = Number(route.params.anime_id)
 const homeStore = useHomeStore()
 const loginStore = useLoginStore()
 const userAnimeStore = useUserAnimeStore()
-const playbackRef = ref<InstanceType<typeof PlaybackPanel> | null>(null)
 
 homeStore.detailDataAction(anime_id)
 

@@ -2,6 +2,17 @@
   <div class="anime-player" :class="{ 'anime-player--controlled': controlled }">
     <div ref="elRef" class="anime-player__el" />
     <p v-if="hint" class="anime-player__hint">{{ hint }}</p>
+    <div v-if="subtitles?.length" class="anime-player__subs">
+      <span class="anime-player__subs-label">字幕</span>
+      <el-select v-model="activeSub" size="small" class="anime-player__subs-select">
+        <el-option :value="-1" label="关闭" />
+        <el-option v-for="s in subtitles" :key="s.index" :value="s.index" :label="s.label" />
+      </el-select>
+      <span class="anime-player__subs-label">字号</span>
+      <el-select v-model="subScale" size="small" class="anime-player__subs-size">
+        <el-option v-for="o in subSizeOptions" :key="o.value" :value="o.value" :label="o.label" />
+      </el-select>
+    </div>
   </div>
 </template>
 
@@ -23,6 +34,16 @@ const props = defineProps<{
   paused?: boolean
   /** 弹幕列表；为空则不显示弹幕 */
   danmaku?: Danmu[]
+  /** 内嵌字幕轨（后端把 ASS/SRT 转成 VTT；`-1` 表示关闭） */
+  subtitles?: Array<{ index: number; label: string; url: string }>
+  /**
+   * 缓冲不足时自动重试（点播室用）。
+   *
+   * 边下边播时服务端在文件还没下到该区间会返回 503，`<video>` 只会触发一次 error，
+   * 不会自己重试；这里隔 2s 用带 cache-bust 的同一地址重建播放器并 seek 回原进度，
+   * 直到数据够用或超过次数上限。
+   */
+  autoRetry?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -36,6 +57,43 @@ const emit = defineEmits<{
 const elRef = ref<HTMLDivElement | null>(null)
 const hint = ref('')
 let player: Artplayer | null = null
+/** 当前显示的字幕轨（-1 = 关闭） */
+const activeSub = ref<number>(-1)
+
+/**
+ * 字幕字号（百分比，相对浏览器默认 cue 字号）。
+ *
+ * 原生 <track> 的样式只能用 `video::cue` 控制，而 ::cue 读不到 CSS 变量，
+ * 所以这里动态维护一条样式规则；偏好存 localStorage，点播室/放映室共用。
+ */
+const SUB_SIZE_KEY = 'player-subtitle-size'
+const subSizeOptions = [
+  { label: '小', value: 60 },
+  { label: '较小', value: 80 },
+  { label: '标准', value: 100 },
+  { label: '大', value: 120 },
+]
+const savedScale = Number(localStorage.getItem(SUB_SIZE_KEY))
+const subScale = ref<number>(subSizeOptions.some((o) => o.value === savedScale) ? savedScale : 100)
+let cueStyleEl: HTMLStyleElement | null = null
+
+function applyCueStyle() {
+  if (!cueStyleEl) {
+    cueStyleEl = document.createElement('style')
+    document.head.appendChild(cueStyleEl)
+  }
+  cueStyleEl.textContent = `.anime-player__video::cue { font-size: ${subScale.value}%; }`
+}
+
+watch(subScale, (v) => {
+  localStorage.setItem(SUB_SIZE_KEY, String(v))
+  applyCueStyle()
+})
+/** 自动重试：第几次、重试后要回跳到的进度、定时器 */
+let retryCount = 0
+let pendingSeek = 0
+let retryTimer: ReturnType<typeof setTimeout> | null = null
+const MAX_RETRY = 60
 /** 插件实例（art.plugins.artplayerPluginDanmuku），用于换集热更新弹幕 */
 interface DanmakuHandle {
   load: (items: Danmu[]) => void
@@ -67,7 +125,63 @@ function clearUserPaused() {
   userPaused = false
 }
 
+/**
+ * 只挂**当前选中**的那一条字幕。
+ *
+ * 一开始是每条都挂 <track> 再切 mode，但浏览器把多条 subtitle 轨道都置成
+ * `showing`（双语字幕会整屏叠字）；改成「同一时刻只存在一个 track 元素」，
+ * 行为确定得多。
+ */
+function mountSubtitle() {
+  const video = player?.video
+  if (!video) return
+  video.querySelectorAll('track').forEach((el) => el.remove())
+  const list = props.subtitles || []
+  const chosen = list.find((s) => s.index === activeSub.value)
+  if (!chosen) return
+  const el = document.createElement('track')
+  el.kind = 'subtitles'
+  el.label = chosen.label
+  el.srclang = 'zh'
+  el.src = chosen.url
+  el.default = true
+  video.appendChild(el)
+}
+
+/** 字幕轨变化（换源/换会话/拉到新轨）时校正选择 */
+function attachSubtitles() {
+  const list = props.subtitles || []
+  if (!list.length) {
+    activeSub.value = -1
+    mountSubtitle()
+    return
+  }
+  if (!list.some((s) => s.index === activeSub.value)) activeSub.value = list[0].index
+  mountSubtitle()
+}
+
+/** 兜底：seek / 重建播放器后浏览器可能把 track 的 mode 重置掉，播放中保持它可见 */
+function ensureSubtitleMode() {
+  const video = player?.video
+  if (!video || activeSub.value === -1) return
+  const track = video.textTracks[0]
+  if (track && track.mode !== 'showing') track.mode = 'showing'
+}
+
+watch(activeSub, () => mountSubtitle())
+watch(
+  () => props.subtitles,
+  () => {
+    if (player) attachSubtitles()
+  },
+  { deep: true },
+)
+
 function destroy() {
+  if (retryTimer) {
+    clearTimeout(retryTimer)
+    retryTimer = null
+  }
   danmakuPlugin = null
   elRef.value?.removeEventListener('pointerdown', clearUserPaused, true)
   if (player) {
@@ -117,6 +231,25 @@ function createPlayer(url: string) {
         if (Hls.isSupported()) {
           const hls = new Hls({
             enableWorker: true,
+            // 分片是服务端按需转码的（第一次请求约 1s），给足缓冲与重试
+            maxBufferLength: 30,
+            maxMaxBufferLength: 60,
+            fragLoadPolicy: {
+              default: {
+                maxTimeToFirstByteMs: 20000,
+                maxLoadTimeMs: 120000,
+                timeoutRetry: {
+                  maxNumRetry: 8,
+                  retryDelayMs: 1000,
+                  maxRetryDelayMs: 8000,
+                },
+                errorRetry: {
+                  maxNumRetry: 8,
+                  retryDelayMs: 1000,
+                  maxRetryDelayMs: 8000,
+                },
+              },
+            },
             xhrSetup(xhr) {
               xhr.withCredentials = false
             },
@@ -162,6 +295,8 @@ function createPlayer(url: string) {
   ]
 
   player = new Artplayer(options)
+  // ::cue 只能作用在 video 元素上，加个 class 让字号规则精确命中
+  player.video.classList.add('anime-player__video')
   danmakuPlugin =
     (player.plugins as Record<string, DanmakuHandle> | undefined)?.artplayerPluginDanmuku ?? null
 
@@ -205,13 +340,25 @@ function createPlayer(url: string) {
 
   // 手动触发首次播放（autoplay:false 避免暂停后缓冲自动续播）
   player.on('ready', () => {
-    if (player && !props.controlled && !props.paused) {
+    if (!player) return
+    if (pendingSeek > 0.5) {
+      try {
+        player.currentTime = pendingSeek
+      } catch {
+        /* seek 失败就从头播 */
+      }
+      pendingSeek = 0
+    }
+    if (!props.controlled && !props.paused) {
       player.play?.()
     }
   })
 
   player.on('video:timeupdate', () => {
-    if (player) emit('timeupdate', player.currentTime)
+    if (!player) return
+    ensureSubtitleMode()
+    if (player.currentTime > 0.5) pendingSeek = player.currentTime
+    emit('timeupdate', player.currentTime)
   })
   player.on('play', () => {
     /*
@@ -237,9 +384,30 @@ function createPlayer(url: string) {
     if (player) emit('seek', player.currentTime)
   })
 
+  // 字幕：把 <track> 挂到播放器自己的 video 上（换源重建播放器后会再挂一次）
+  attachSubtitles()
+
   player.on('error', () => {
-    hint.value = '播放失败：请更换数据源重试'
     emit('error')
+    if (!props.autoRetry || !props.url) {
+      hint.value = '播放失败：请更换数据源重试'
+      return
+    }
+    if (retryCount >= MAX_RETRY) {
+      hint.value = '长时间缓冲不足，请换源或等下载完成'
+      return
+    }
+    retryCount += 1
+    pendingSeek = Math.max(pendingSeek, player?.currentTime || 0)
+    hint.value = `缓冲中，正在重试（${retryCount}/${MAX_RETRY}）…`
+    if (retryTimer) clearTimeout(retryTimer)
+    retryTimer = setTimeout(() => {
+      retryTimer = null
+      const base = props.url
+      if (!base) return
+      const sep = base.includes('?') ? '&' : '?'
+      createPlayer(`${base}${sep}_r=${retryCount}`)
+    }, 2000)
   })
 }
 
@@ -295,16 +463,27 @@ watch(
   () => props.url,
   (u) => {
     hint.value = ''
+    retryCount = 0
+    pendingSeek = 0
+    if (retryTimer) {
+      clearTimeout(retryTimer)
+      retryTimer = null
+    }
     if (u) createPlayer(u)
     else destroy()
   },
 )
 
 onMounted(() => {
+  applyCueStyle()
   if (props.url) createPlayer(props.url)
 })
 
-onBeforeUnmount(() => destroy())
+onBeforeUnmount(() => {
+  cueStyleEl?.remove()
+  cueStyleEl = null
+  destroy()
+})
 
 defineExpose({ seekTo, setPaused, getPlayer, clearHint })
 </script>
@@ -334,6 +513,28 @@ defineExpose({ seekTo, setPaused, getPlayer, clearHint })
     font-size: 12px;
     color: var(--font-unactive-color);
     background: var(--aside-bg-color);
+  }
+
+  &__subs {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--aside-bg-color);
+    border-top: 1px solid rgba(104, 198, 189, 0.12);
+
+    &-label {
+      font-size: 12px;
+      color: var(--font-unactive-color);
+    }
+
+    &-select {
+      width: 160px;
+    }
+
+    &-size {
+      width: 96px;
+    }
   }
 
   &--controlled &__el {

@@ -7,6 +7,7 @@
       :controlled="!isHost"
       :paused="playbackState?.paused"
       :danmaku="danmakuItems"
+      :subtitles="subtitles"
       @timeupdate="onTimeUpdate"
       @play="onPlay"
       @pause="onPause"
@@ -71,7 +72,12 @@
 <script setup lang="ts">
 import { useRoomStore } from '@/stores/modules/room'
 import { useHomeStore } from '@/stores/modules/home'
-import { buildPlaybackStreamUrl, type PlayCandidate } from '@/api/playback'
+import {
+  buildPlaybackStreamUrl,
+  buildSubtitleUrl,
+  getSessionSubtitles,
+  type PlayCandidate,
+} from '@/api/playback'
 import { extractQuality } from '@/utils/source-quality'
 import { addPlayHistory } from '@/utils/play-history'
 import AnimePlayer from '@/components/Player/AnimePlayer.vue'
@@ -111,6 +117,8 @@ let danmakuToken = 0
 
 const isHost = computed(() => roomStore.role === 'host')
 const playbackState = computed(() => roomStore.playbackState)
+/** 内嵌字幕轨（与点播室同一套接口，按会话 id 取） */
+const subtitles = ref<Array<{ index: number; label: string; url: string }>>([])
 const currentEpisodeSort = computed(() => playbackState.value?.episode_sort ?? null)
 const episodeList = computed(() => homeStore.episodes)
 const bangumiId = computed(() => homeStore.animeDetail?.id ?? 0)
@@ -138,6 +146,26 @@ watch(
       if (token === danmakuToken) danmakuItems.value = items
     } catch {
       /* 静默 */
+    }
+  },
+  { immediate: true },
+)
+
+// 房间播放会话变化时刷新字幕轨（观众也用自己的 token 请求，成员鉴权允许）
+watch(
+  () => playbackState.value?.session_id,
+  async (id) => {
+    subtitles.value = []
+    if (!id) return
+    try {
+      const tracks = await getSessionSubtitles(id)
+      subtitles.value = (tracks || []).map((t) => ({
+        index: t.index,
+        label: t.label,
+        url: buildSubtitleUrl(id, t.index),
+      }))
+    } catch {
+      /* 静默：没有字幕不影响播放 */
     }
   },
   { immediate: true },

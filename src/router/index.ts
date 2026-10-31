@@ -28,6 +28,18 @@ const routes: RouteRecordRaw[] = [
     redirect: '/ai',
   },
   {
+    // 点播室入口：创建私人房间 / 用邀请链接加入
+    path: '/vod',
+    name: 'Vod',
+    component: () => import('@/views/vod/VodEntry.vue'),
+  },
+  {
+    // 点播室房间：房主选源、成员同步跟随，房间内聊天（无弹幕、不绑番剧）
+    path: '/vod/:seasonId',
+    name: 'VodRoom',
+    component: () => import('@/views/vod/VodRoom.vue'),
+  },
+  {
     path: '/user',
     name: 'User',
     component: () => import('@/views/user/User.vue'),

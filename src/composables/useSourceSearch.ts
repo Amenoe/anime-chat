@@ -1,6 +1,7 @@
 import { useRoomStore } from '@/stores/modules/room'
 import { useHomeStore } from '@/stores/modules/home'
 import {
+  buildHlsPlaylistUrl,
   buildPlaybackStreamUrl,
   createPlaybackSession,
   createStreamPlaybackSession,
@@ -504,6 +505,7 @@ export function useSourceSearch(opts?: { clearPlayerHint?: () => void }) {
       let sessionId: string
 
       let playMode: 'progressive' | 'stream' | 'hls' = 'progressive'
+      let remuxRequired = false
       if (c.kind === 'stream') {
         const s = await createStreamPlaybackSession({
           streamUrl: c.uri,
@@ -524,13 +526,17 @@ export function useSourceSearch(opts?: { clearPlayerHint?: () => void }) {
         })
         sessionId = s.id
         playMode = s.playMode || 'progressive'
+        remuxRequired = !!s.remuxRequired
       }
 
       clearPlayerHint?.()
 
       roomStore.sendControl('set_source', {
         session_id: sessionId,
-        stream_url: buildPlaybackStreamUrl(sessionId, { hls: playMode === 'hls' }),
+        // mkv/HEVC：走 HLS 分片（真实时长 + 可拖动）；其它走原生 Range 流
+        stream_url: remuxRequired
+          ? buildHlsPlaylistUrl(sessionId)
+          : buildPlaybackStreamUrl(sessionId, { hls: playMode === 'hls' }),
         episode_sort: epSort,
         title: c.title || playbackTitle.value,
       })

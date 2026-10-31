@@ -113,11 +113,13 @@ API modules in `src/api/` export typed functions: `home.ts` / `search.ts`（Bang
 
 ### State Management (Pinia)
 
-Six stores in `src/stores/modules/`, all using Composition API style (`defineStore` with setup function):
+Seven stores in `src/stores/modules/`, all using Composition API style (`defineStore` with setup function):
 
 - **login** — accessToken / refreshToken / userInfo，持久化 localStorage；`refreshAction` / `logoutAction`
 - **home** — anime listing data, calendar (weekly broadcast), detail + episodes from Bangumi API
 - **room** — 放映室：socket 连接、role（host/viewer）、playback_state、消息、在线成员
+- **vod** — 点播室房间：socket 连接、role（host/viewer）、playback_state、消息、在线成员；
+  有房间时才有意义，房主离开房间即解散
 - **userAnime** — 追番（wish/watching/done）
 - **ai** — AI 对话：会话列表、消息、流式状态；`reset()` 见下
 - **route** — sidebar navigation list；**按 role 动态计算**（`computed`），root 才多出「管理看板」。
@@ -137,6 +139,27 @@ A custom `$reset` plugin in `src/stores/index.ts` snapshots initial state on cre
 HTML5 History mode, all routes lazy-loaded. No route guards — auth checks happen inside individual components.
 
 放映室路由 `/room/:seasonId`（房间业务 key 为 `season_id`，勿与 `session_id` 混淆）。详情页点集 → 列房/创建确认 → 进房。
+
+点播室 `/vod`（入口）+ `/vod/:seasonId`（房间）：**私人房间、房主选源、成员只读跟随**。
+番剧详情页**不再有播放区**（原来那个 `PlaybackPanel` 已删除）——想临时拉人一起看就建点播室。
+`views/vod/VodEntry.vue` 负责创建/粘贴邀请链接加入；`VodRoom.vue` 是房间页，
+聊天用 `ChatPaneBase` + `vod` store。与放映室的差别：不绑番剧、不加载弹幕、
+**房主离开即解散**（放映室是转让）。
+
+⚠️ 播放链路（改之前先读 `docs/playback-architecture.md`）：
+
+- `VodPlayer` 拿到会话后**轮询**；只有出现 `fileName` 才挂 `<AnimePlayer>`，
+  因为这时才知道该用哪种地址：`remuxRequired` → `buildHlsPlaylistUrl`（mkv/HEVC 的 HLS 分片），
+  否则 `buildPlaybackStreamUrl`（原生 Range 流）
+- `AnimePlayer` 的 `autoRetry` 只给点播室开：边下边播时服务端会返回 503（缓冲不足），
+  `<video>` 自己不会重试，靠 2s 后带 `_r=N` 重建 + seek 回原进度来推进；
+  HLS 模式下分片重试由 hls.js 的 `fragLoadPolicy` 负责（已放到 8 次/1s 起）
+- 别把 `status !== 'ready'` 当成「不能播」：`downloading` 时 `playUrl` 也是有效的
+- 字幕是**内嵌轨**（外挂字幕文件不下载）：父组件用 `getSessionSubtitles` + `buildSubtitleUrl`
+  取轨道，传给 `<AnimePlayer :subtitles>`；`AnimePlayer` **同一时刻只挂一个 `<track>`** ——
+  全挂上再切 `mode` 会让浏览器把多条轨道都设为 `showing`（整屏叠字）
+- 字幕字号走 `video::cue`：`::cue` 读不到 CSS 变量，所以 `AnimePlayer` 动态维护一条
+  `.anime-player__video::cue { font-size: X% }` 规则（4 档，localStorage `player-subtitle-size`）
 
 管理看板 `/admin`（`views/admin/Admin.vue`）。**刻意不加路由守卫**：权限判定在后端
 （非 root 一律 403），前端隐藏入口只是体验；页面自身先查 role，非 root 展示
@@ -164,8 +187,8 @@ HTML5 History mode, all routes lazy-loaded. No route guards — auth checks happ
 
 三个刻意的设计（改之前先想清楚）：
 
-- **显示范围是有意收窄的**：`/ai` 隐藏（那里已是完整助手）、`/room` 隐藏
-  （全屏播放会被挡住）、其余页面显示。别为了「到处都能用」把 `/room` 放开。
+- **显示范围是有意收窄的**：`/ai` 隐藏（那里已是完整助手）、`/room` 与 `/vod/:seasonId`
+  （房间页）隐藏（全屏播放会被挡住）、其余页面显示。别为了「到处都能用」把它们放开。
 - **与会话共享同一个 `ai` store**，不是独立实例。好处是从气泡问的内容切到 `/ai`
   仍是同一条对话；代价是 `streaming` 也共享 —— 所以**关闭抽屉不中断生成**
   （用户可能想让它写完）。别在抽屉关闭时调 `stop()`。

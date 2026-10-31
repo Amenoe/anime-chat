@@ -170,15 +170,11 @@ const isLogin = computed(() => loginStore.token !== '')
 const isMobile = ref(false)
 
 /** 路由名在这个名单里就不显示气泡 */
-const hidden = computed(() => ['Ai', 'Room'].includes(String(route.name)))
+const hidden = computed(() => ['Ai', 'Room', 'VodRoom'].includes(String(route.name)))
 
 const drawerSize = computed(() => (isMobile.value ? '100%' : '420px'))
 
-const suggestions = [
-  '推荐几部高分科幻番',
-  '2026 年 10 月有什么新番',
-  '想不起来名字，主角是红发剑士',
-]
+const suggestions = ['推荐几部高分科幻番', '这个季度有什么新番', '想不起来名字，主角是红发剑士']
 
 function syncMobile() {
   isMobile.value = window.innerWidth <= 768

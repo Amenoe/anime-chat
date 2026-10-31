@@ -32,6 +32,12 @@ export const useRouteStore = defineStore('route', () => {
       icon: 'MagicStick',
     },
     {
+      name: '点播室',
+      routeName: 'Vod',
+      routePath: 'vod',
+      icon: 'VideoPlay',
+    },
+    {
       name: '个人中心',
       routeName: 'User',
       routePath: 'user',
