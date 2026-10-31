@@ -1,7 +1,10 @@
 # 接口契约（前后端共同遵守）
 
 > 统一响应、鉴权方式、用户/认证/追番接口。
-> 放映室与播放接口见 `PROJECT_MEMORY.md` §2 与 `playback-architecture.md`。
+> 放映室、点播室与播放接口见 `PROJECT_MEMORY.md` §2 与 `playback-architecture.md`。
+> 点播室大厅 `GET /api/rooms/vod-lobby`（常驻房间，仅用于聊天）；播放会话
+> `GET /api/playback/sessions/:id` 的 `playUrl`/`remuxRequired` 语义见
+> `COGNITION_SYNC.md` §5.2。
 
 ## 0. 通用约定
 

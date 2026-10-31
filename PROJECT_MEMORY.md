@@ -129,10 +129,55 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 18 | P1 | 看板 v2：亮色适配 / 事件中文化 / 指标重构 / AI 登录门禁 | ✅ 2026-09-22 | 新增 `stats/engagement`（访问量·消耗·使用率）；`CHART_COLORS` 改为运行时读 CSS 变量（图表终于跟随主题）；事件中文名映射 `constants/track-events.ts`；AI 页未登录不再发请求。**顺带修出 `search.submit` 从未上报**（见 §4） |
 | 19 | P1 | anime-ai 话题范围守卫（只聊动漫） | ✅ 2026-09-22 | 提示词加固 + 输入前置拦截，**fail-open**。拒答走正常 SSE、`finishReason=SCOPE_REJECTED`、不计为错误。71 项纯函数单测 |
 | 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | 🔄 2026-09-22 | 见 `admin-roadmap.md`。**用户管理（含前端界面）+ 安全收口已完成**（见 §4 修复记录）：封禁列与三处即时失效、`RootGuard` 抽取、`admin/users` 全套接口、级联删号、审计表、`/admin` 用户管理分区（tab 化）；已删越权枚举 `GET /api/user` 与整个停用的番剧 HTTP 子系统。**剩余**：AI 会话审阅、埋点明细查询/导出、系统配置、番剧数据（后者的正解是「删」，见 roadmap §8） |
+| 21 | P1 | 播放能力拆分：详情页移除播放 + 新增点播室 `/vod` | ✅ 2026-10-30 | 详情页 `PlaybackPanel` 删除；点播室是**私人房间**（`POST /api/rooms/vod`，`anime_id=0` 不进公开列表，邀请链接 `/vod/:seasonId`）：房主选源、成员只读同步，房间内聊天、无弹幕，**房主离开即解散**；聊天面板抽 `ChatPaneBase` 与放映室共用；双浏览器实测：建房→邀请→跟随播放→聊天→房主退出解散 |
+| 22 | P1 | 修「下载前就判定不能播 / 下载完也不能播」→ 边下边播 | ✅ 2026-10-30 | ① `create()` 不再同步等 metadata（超时不再是 400）；② qB 加种幂等 + 只下选中文件 + 顺序下载；③ 出流按「已下载字节」裁剪 Range，不足返回 503；④ **`local_path` 曾被写成种子目录**（多文件种子 `content_path` 是目录）→ 下载完也播不了；⑤ mkv/HEVC 用 ffmpeg 转 HLS 分片（真实时长 + 可拖动）；⑥ 前端缓冲自动重试。见 §4 |
+| 24 | P2 | 字幕字号可调（ASS 特效暂不做） | ✅ 2026-10-31 | `AnimePlayer` 用 `video::cue` 动态规则给 80/100/130/160% 四档，localStorage 持久化；ASS 特效（描边/字体/定位）需要 JASSUB 或服务端烧录，方案已写进 `playback-architecture.md`，未实现 |
+| 23 | P2 | 内嵌字幕显示（ASS→VTT） | ✅ 2026-10-30 | `GET .../subtitles` + `.../subtitle/:track.vtt`；ASS 只保留对白；双语同刻 cue 合并成一条多行；前端 `AnimePlayer` 单选轨道下拉。**外挂字幕文件仍不下载**（用户明确只做内嵌） |
 
 ---
 
 ## 4. 修复记录
+
+### 2026-10-30 · 点播室拆分 + 磁力「边下边播」
+
+**背景**：详情页的播放面板与放映室没有任何联动，谁都能往里塞资源播；同时磁力测试出现
+「还没下载就提示不能播放」「下完了也播不了」两种失败。于是把播放从详情页拆出去，并重做播放链路。
+
+**三个根因**（都不是「前端没写好」）：
+
+1. `create()` 同步等 metadata（最长 30s），超时直接 400 —— 磁力 metadata 经常 1-2 分钟才到，
+   用户看到的就是「下载前就判定不能播」。现在先落库 `fetching` 立刻返回，后台补选文件；
+   `refreshOne` 对「元数据迟到」也会自动补选，不再标 `failed`。
+2. `resolveLocalPath` 把多文件种子的 `content_path`（**是目录**）当成了播放文件，
+   `local_path` 指向目录 → `statSync` 读到 160 字节 → 永远「缓冲不足」。修复为只接受普通文件。
+3. 下载中 `size < playableMinBytes` 直接 400，且 `toView` 只在 `playable/ready` 给 `playUrl`。
+   现在按「已下载字节」裁剪 Range，不足先等、超时 503；播放器每 2s 自动重试并 seek 回原进度。
+
+另外：番剧磁力常见 `xxx.mkv`（HEVC 10bit + ASS），浏览器根本不认这个容器。新增
+`MediaTranscodeService`：ffmpeg 输入走 pipe（只喂已下载字节，避免 qB 预分配的空洞当数据），
+输出 frag-mp4；h264 直接 copy，HEVC 才转码（macOS 走 `h264_videotoolbox`）。
+实测 `Get /api/playback/sessions/:id/stream?format=fmp4` 在 headless Chrome 里
+`readyState=4, currentTime=8s, 1920x1080`。
+
+**同日补丁：mkv 从「单条 fMP4」改为 HLS 分片。** 用户实测进度条只显示 20 秒、不能拖动 ——
+fragmented mp4 没有 moov 索引，浏览器拿不到总时长。现在 `/hls.m3u8` 一次性给出全部
+EXTINF + ENDLIST（实测 24:00、241 片），播放器能算出真实时长并 seek；分片首次请求时用
+ffmpeg 精确 seek 转码 6 秒并落缓存。⚠️ 分片必须 `-copyts`（保留原始时间戳）：每段从 0 开始
+会让 hls.js 判定时间戳回退，播放卡在第一片末尾、且没有任何报错。实测点进度条 40% →
+`09:38 / 24:00` 并继续播放。
+
+**同日再补：点播室从「公共聊天室」改为「私人房间」。** 原设计是全局大厅 + 各自播放，实际用起来
+不像「一起看」。现在：`POST /api/rooms/vod` 建私人房间（`anime_id=0`、随机 `season_id`、不进详情页
+房间列表），邀请链接 `/vod/:seasonId`；房主选源后**只广播 `session_id`**，成员用自己的 token 拉流
+（不把房主 accessToken 泄给观众）；`playback:control` 仅房主、成员播放器 `controlled` 只读；
+`ChatGateway.handleLeaveGroup` 对 `anime_id===0` 的房间在房主离开时直接销毁并广播 `room:destroyed`；
+聊天随房间销毁。踩过的坑：房主建会话时**必须带 `groupId`**，否则成员拉流走 `findUserMap` 鉴权失败，
+观众端 404「播放会话不存在」。
+
+**验证**（真实接口 + 浏览器，非 mock）：mp4 下载中拉流返回
+`206 Content-Range: bytes 0-233366214/276134947`（裁剪到已下载）；点播室 UI 粘贴磁力 →
+播放器出现 → 播放；`/dev/detail/10380` 只剩「简介 / 剧集」两个 section；
+点播室聊天发消息后消息落库并回显。
 
 ### 2026-10-14 · M2 验收收口、评估集纠错与三项技术债
 

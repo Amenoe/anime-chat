@@ -112,6 +112,31 @@
 - 同一 `anime_id` 可以有**多间房**（不同 `season_id`）
 - 进度同步是**强同步**：房主控制，观众强制跟随；心跳 8s，广播节流 1s，写库节流 2s
 
+### 5.1 放映室 vs 点播室（别把两者混在一起）
+
+| | 放映室 `/room/:seasonId` | 点播室 `/vod/:seasonId` |
+| --- | --- | --- |
+| 房间 | 绑定番剧，公开可列（按 `anime_id` 查），空房销毁 | 私人房间（`anime_id = 0`，不列），凭邀请链接进，空房销毁 |
+| 播放 | 房主选源，`playback:state` 强同步给观众 | **相同**（房主选源、成员只读跟随） |
+| 弹幕 | 按 `anime_id + episode_sort` 拉取，房主/观众都显示 | **不加载弹幕** |
+| 聊天 | `ChatGateway.groupMessage` | 复用同一套，房间内的聊天 |
+| 房主离开 | 转让给最早加入者 | **解散房间**（广播 `room:destroyed`） |
+| 聊天数据 | `group_message` 随房间销毁 | 随房间销毁 |
+
+实现上刻意分成两个 Pinia store（`room` / `vod`）：都是单例，混用会让「放映室的状态」被点播室覆盖。
+
+### 5.2 播放会话字段（前端 `PlaybackSessionView`）
+
+| 字段 | 含义 |
+| --- | --- |
+| `status` | `fetching`（等 metadata）→ `downloading` → `playable`/`ready`；`failed` 才代表不可恢复 |
+| `playUrl` | `failed` 以外都给（下载中也要给，播放器靠重试推进）；前端也可以自己拼 |
+| `remuxRequired` | true = mkv/HEVC：**不要用 `stream`**，改用 `GET /api/playback/sessions/:id/hls.m3u8`（静态 VOD playlist，有时长、可 seek） |
+| 字幕 | `GET /api/playback/sessions/:id/subtitles` 列**内嵌**字幕轨；`.../subtitle/:track.vtt?token=` 取 WebVTT。外挂字幕文件不下载，PGS 图形字幕不可转 |
+| `progress` / `downloadedBytes` / `sizeBytes` | 进度；`downloadedBytes` 才是「真实可读」的上限（qB 预分配） |
+
+⚠️ `status !== 'ready'` 不等于不能播；`playUrl === null` 只在 `failed` 时出现。
+
 ## 6. 数据与建表
 
 - MySQL `anime_chat`；dev 用 TypeORM `synchronize: true` + `autoLoadEntities: true`
@@ -127,7 +152,8 @@
 | 接口路径 / 请求响应字段 | 另一端调用处 + `docs/api-contract.md` + 前端 `src/api/types.ts` |
 | 鉴权行为（token 时效、吊销时机、字段名） | `docs/api-contract.md` + 前端 `axios-utils.ts` / `login` store |
 | 新增环境变量 | 对应 README 的环境变量表 + 本机 `.env.*` |
-| Socket 事件 / 回包字段 | `chat.gateway.ts` + 前端 `room` store + 本文 §4 |
+| Socket 事件 / 回包字段 | `chat.gateway.ts` + 前端 `room`/`vod` store + 本文 §4 |
+| 播放会话字段 / 出流参数 | 前端 `api/playback.ts` + `VodPlayer`/`AnimePlayer` + `playback-architecture.md` |
 | 跨仓的概念命名 | 两端一起改，并更新本文 §5 |
 | 任务状态 / 踩坑 | `docs/PROJECT_MEMORY.md` 看板与修复记录 |
 
