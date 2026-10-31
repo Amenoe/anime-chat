@@ -1,0 +1,105 @@
+# 动漫聊天室
+
+`nest.js` `typeorm` `jwt` `socket.io`
+
+---
+
+## 环境
+
+| 环境 | 文件               | 启动              |
+| ---- | ------------------ | ----------------- |
+| 开发 | `.env.development` | `pnpm start:dev`  |
+| 生产 | `.env.production`  | `pnpm start:prod` |
+
+| 变量                     | 说明                                                                                             |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `DB_*`                   | MySQL 连接                                                                                       |
+| `JWT_SECRET`             | accessToken 签名密钥                                                                             |
+| `JWT_REFRESH_SECRET`     | **可选**。refreshToken 专用密钥；缺省由 `JWT_SECRET` 派生（`":refresh"` 后缀）。生产建议显式设置 |
+| `JWT_ACCESS_EXPIRES_IN`  | **可选**。accessToken 有效期，默认 `2h`                                                          |
+| `JWT_REFRESH_EXPIRES_IN` | **可选**。refreshToken 有效期，默认 `30d`                                                        |
+| `MINIO_*`                | 头像对象存储                                                                                     |
+| `QB_*`                   | qBittorrent（BT 边下边播）。`QB_ENABLED` 开关、`QB_URL`/`QB_USERNAME`/`QB_PASSWORD`；`QB_DOWNLOAD_PATH` 须与 `docker-compose.playback.yml` 里 `./data/bt-downloads:/downloads` 的宿主机目录一致，详见 [docs/playback-architecture.md](../docs/playback-architecture.md) |
+| `FFMPEG_PATH` / `FFPROBE_PATH` | **可选**。ffmpeg/ffprobe 路径（默认 `ffmpeg`/`ffprobe`）。mkv/HEVC 靠它转封装成 fMP4，找不到时只影响这类资源 |
+| `PLAYBACK_TRANSCODE`     | **可选**。默认 `true`；`false` 完全关闭服务端转封装（mkv 会提示换 mp4 源）                     |
+| `PLAYBACK_VIDEO_ENCODER` | **可选**。`auto`（默认，按平台选 videotoolbox/nvenc/qsv，回落 libx264）或显式指定               |
+| `PLAYBACK_TRANSCODE_MAX_BITRATE` | **可选**。转码输出码率上限，默认 `6M`                                                    |
+| `PLAYBACK_HLS_SEGMENT`   | **可选**。HLS 分片时长（秒），默认 `6`；越小 seek 越准、转码请求越多                              |
+| `PLAYBACK_HLS_CACHE_DIR` | **可选**。分片缓存目录，默认 `<tmp>/anime-chat-hls`                                               |
+| `PLAYBACK_HLS_CACHE_TTL_HOURS` | **可选**。分片缓存保留小时数，默认 `6`                                                     |
+| `OUTBOUND_PROXY`         | **可选**。搜源在浏览器完成，服务器通常不需要；仅运维代拉时配置                                   |
+| `AI_SERVICE_URL`         | **可选**。anime-ai 服务地址，默认 `http://127.0.0.1:8013`                                        |
+| `AI_INTERNAL_TOKEN`      | 与 anime-ai 的 `ai.internal-token` **必须一致**，否则转发被拒 401；留空则两侧都不校验（仅本地）  |
+| `AI_DAILY_QUOTA`         | **可选**。每日每人对话次数上限，默认 `50`；`<=0` 表示不限量（仅本地调试）                        |
+| `AI_HISTORY_WINDOW`      | **可选**。每次送给模型的最近消息条数，默认 `20`。**这是唯一的历史裁剪点**（anime-ai 无状态）      |
+| `AI_MAX_MESSAGE_LENGTH`  | **可选**。单条消息长度上限，默认 `2000`                                                          |
+| `AI_UPSTREAM_TIMEOUT_MS` | **可选**。转发建连/首字节超时，默认 `30000`                                                      |
+| `DANDANPLAY_APP_ID`      | 弹幕开放平台的 AppId（[申请](https://doc.dandanplay.com/open/)）                                 |
+| `DANDANPLAY_APP_SECRET`  | 弹幕开放平台的 AppSecret。**只在服务端用**，签名 `base64(sha256(AppId+Timestamp+Path+Secret))`     |
+| `DANDANPLAY_CALLBACK`    | **可选**。OAuth 回调地址；当前只做只读弹幕，未用到登录态                                         |
+| `DANMAKU_MAX_ITEMS`      | **可选**。单集弹幕上限，默认 `6000`；超限按时间**均匀抽样**（截断会让后半集没弹幕）              |
+| `AI_STREAM_TIMEOUT_MS`   | **可选**。单次流式总时限，默认 `180000`；需大于 anime-ai 侧模型超时（60s）                       |
+
+> `PORT` / `HOST` 会覆盖监听地址（默认 `3000` / `0.0.0.0`），便于并行起多实例验证。
+
+## 鉴权（双 token）
+
+| 接口                     | 说明                                                             |
+| ------------------------ | ---------------------------------------------------------------- |
+| `POST /api/auth/login`   | 签发 accessToken（短时效，不落库）+ refreshToken（长时效，落库） |
+| `POST /api/auth/refresh` | 用 refreshToken 换一对新 token；**轮换**，旧的立即作废           |
+| `POST /api/auth/logout`  | 吊销传入的 refreshToken                                          |
+
+- `refresh_token` 表只存 `sha256(jwt)`，明文只在登录/刷新响应出现一次
+- 已作废 refreshToken 被再次使用 → 判定泄露，吊销该用户全部会话
+- 改密、删号会吊销该用户全部 refreshToken
+- 业务接口只接受 accessToken（`typ=access`），refreshToken 访问会 401
+
+## 数据源
+
+个人中心「数据源」：订阅 JSON（Animeko 格式）。默认：
+
+- `https://sub.creamycake.org/v1/css1.json` — 流媒体
+- `https://sub.creamycake.org/v1/bt1.json` — BT RSS
+
+**订阅拉取与搜源在用户浏览器执行**（走用户自己的网络 / 代理）。服务器只保存订阅 URL，并在用户选定资源后：
+
+1. **流媒体**：`POST /api/playback/sessions/stream` → 代理 Range 出流
+2. **BT**：`POST /api/playback/sessions` magnet → qB 边下边播
+
+## 播放 API
+
+```http
+POST /api/playback/sessions/stream   # 直链（立即 ready）
+POST /api/playback/sessions          # magnet / torrent（立即返回 fetching，后台补 metadata）
+GET  /api/playback/sessions/:id      # 轮询进度；status=fetching/downloading 也能播
+GET  /api/playback/sessions/:id/stream?token=   # 原生容器：Range 流（下载中也能播）
+GET  /api/playback/sessions/:id/hls.m3u8?token= # mkv/HEVC：静态 VOD playlist（有时长、可 seek）
+GET  /api/playback/sessions/:id/hls/:i.ts?token=  # 分片：首次请求时转码，之后走缓存
+GET  /api/playback/sessions/:id/subtitles        # 内嵌字幕轨（外挂字幕文件不下载）
+GET  /api/playback/sessions/:id/subtitle/:track.vtt?token=  # 字幕转 WebVTT
+GET  /api/media-sources              # 用户订阅列表
+POST /api/rooms/vod                  # 新建私人点播室（邀请链接 /vod/<seasonId>，不绑番剧）
+```
+
+BT 需 `QB_ENABLED=true` + docker-compose.playback.yml。播放是**边下边播**：
+出流只读已下载区间，缓冲不足返回 503，前端播放器自动重试。详见
+[docs/playback-architecture.md](../docs/playback-architecture.md)。
+
+## 放映室（一起看）
+
+- `GET /api/rooms?anime_id=&episode_sort=` — 该番进行中的房间
+- `POST /api/rooms` — 创建房间（生成 `season_id` 房间 key，绑定集数）
+- `GET /api/rooms/by-key/:seasonId` — 按房间 key 取详情
+- Socket.IO：`joinRoom`（含 `create: true` 建房）、`playback:control`（仅房主）、`playback:state` 广播、`host:changed` / `room:destroyed`
+- 同房拉流：播放会话带 `group_id`，`openStream` 鉴权 = 属主 / 房主 / `group_user_map` 成员
+- 房主离开 → 转让最早加入者；空房 → 硬删消息/成员映射/房间
+
+核心设计决策与任务看板见 [docs/PROJECT_MEMORY.md](../docs/PROJECT_MEMORY.md)，
+接口契约见 [docs/api-contract.md](../docs/api-contract.md)，表结构见 [docs/schema.sql](../docs/schema.sql)。
+
+> 改实体后请同步更新 `docs/schema.sql`：生产环境关闭 `synchronize`，建库依赖该文件。
+
+---
+
+前端：[anime-chat](https://github.com/Amenoe/anime-chat)

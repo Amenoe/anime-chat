@@ -1,0 +1,881 @@
+import {
+  HttpException,
+  HttpStatus,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import axios from 'axios';
+import type { Response } from 'express';
+import { Readable } from 'stream';
+import { StringDecoder } from 'string_decoder';
+import { Repository } from 'typeorm';
+import { aiConfig } from 'src/core/config/config';
+import {
+  clampDays,
+  clampLimit,
+  rowToNumbers,
+  toNumbers,
+} from 'src/core/utils/sql';
+import { ChatDto } from './dto/chat.dto';
+import { AiConversation } from './entities/ai-conversation.entity';
+import { AiMessage } from './entities/ai-message.entity';
+import { AiUsage } from './entities/ai-usage.entity';
+import { TrackEvent } from 'src/track/entities/track-event.entity';
+import { TrackService } from 'src/track/track.service';
+import {
+  UserAnime,
+  UserAnimeStatus,
+} from 'src/user-anime/entities/user-anime.entity';
+
+/** 会话列表项 */
+export interface ConversationItem {
+  id: string;
+  title: string | null;
+  create_time: Date;
+  update_time: Date;
+  message_count?: number;
+}
+
+/** SSE 事件名，与 anime-ai 的 SseEvent 一一对应 */
+/** 一个 AI 对话请求对应的事件名（前后端埋点共用这张表） */
+const EV_AI_CHAT = 'ai.chat';
+
+/**
+ * 前端埋点事件名，用于「AI 使用率」这类**跨功能**指标。
+ *
+ * ⚠️ 与 `anime-chat` 的 `utils/track.ts` 调用处**一一对应**，改名要两端一起改，
+ * 否则指标会静默变成 0（不会报错 —— SQL 里查不到事件名就是 0 行）。
+ */
+const EV_PAGE_VIEW = 'page.view';
+/** AI 回答里的番剧卡片被点开（跳详情页） */
+const EV_AI_CARD_CLICK = 'ai.card.click';
+/** 用户在搜索页提交了一次搜索 */
+const EV_SEARCH_SUBMIT = 'search.submit';
+/** 搜索页的结果被点开（跳详情页），与 AI 卡片点击对称 */
+const EV_SEARCH_RESULT_CLICK = 'search.result.click';
+
+/** 请求终态。client_abort 单列，避免用户中途离开被算成服务错误 */
+type AiEventStatus = 'ok' | 'error' | 'client_abort';
+
+const EV = {
+  TEXT_DELTA: 'text-delta',
+  TOOL_CALL: 'tool-call',
+  TOOL_RESULT: 'tool-result',
+  USAGE: 'usage',
+  ERROR: 'error',
+  DONE: 'done',
+} as const;
+
+/**
+ * AI 网关服务。
+ *
+ * 职责：鉴权后的配额闸门、会话落库、把 anime-ai 的 SSE 透传给前端。
+ * **不包含任何检索逻辑** —— 那是 anime-ai 的事（见 docs/ai-rag-practice-roadmap.md）。
+ */
+@Injectable()
+export class AiService {
+  private readonly logger = new Logger(AiService.name);
+
+  constructor(
+    @InjectRepository(AiConversation)
+    private readonly conversationRepo: Repository<AiConversation>,
+    @InjectRepository(AiMessage)
+    private readonly messageRepo: Repository<AiMessage>,
+    @InjectRepository(AiUsage)
+    private readonly usageRepo: Repository<AiUsage>,
+    @InjectRepository(TrackEvent)
+    private readonly trackRepo: Repository<TrackEvent>,
+    @InjectRepository(UserAnime)
+    private readonly userAnimeRepo: Repository<UserAnime>,
+    private readonly trackService: TrackService,
+  ) {}
+
+  // ── 会话查询 ────────────────────────────────────────────────
+
+  async listConversations(userId: string): Promise<ConversationItem[]> {
+    return this.conversationRepo.find({
+      where: { user_id: userId },
+      order: { update_time: 'DESC' },
+      take: 50,
+    });
+  }
+
+  async getMessages(
+    userId: string,
+    conversationId: string,
+  ): Promise<AiMessage[]> {
+    await this.findOwnedConversation(userId, conversationId);
+    return this.messageRepo.find({
+      where: { conversation_id: conversationId },
+      order: { create_time: 'ASC' },
+    });
+  }
+
+  async deleteConversation(
+    userId: string,
+    conversationId: string,
+  ): Promise<void> {
+    await this.findOwnedConversation(userId, conversationId);
+    await this.messageRepo.delete({ conversation_id: conversationId });
+    await this.conversationRepo.delete({ id: conversationId });
+  }
+
+  // ── 用量统计（管理员看板用，见 docs 里的「后续管理员界面」）─────
+
+  /**
+   * 总览。
+   *
+   * `client_abort` 单列：用户中途关页面/点停止不该算进错误率，否则会冤枉服务质量。
+   *
+   * 数据来自通用埋点表 `track_event`（`event = 'ai.chat'`），数值属性存在 `props` JSON 里，
+   * 所以要用 `props->>'$.xxx'` 提取。可读性不如专用表，但换来「前后端埋点共用一张表」。
+   * 量级上来后应先加物化汇总表，而不是给通用表加业务列。
+   */
+  async statsOverview() {
+    const [row] = (await this.trackRepo.query(
+      // 每个 SUM 都要 COALESCE(...,0)：**零行时 SUM 返回 NULL 而不是 0**。
+      // `toNumbers()` 是故意跳过 null 的（它只负责「字符串→数字」，不负责补默认值），
+      // 漏包的话看板会拿到 null，与接口契约说的「数字」不符（本开发过程中实测到）。
+      // COUNT 天然返回 0，不需要包。
+      `SELECT COUNT(*)                                                       AS total_requests,
+              COALESCE(SUM(props->>'$.status' = 'ok'), 0)                    AS ok_requests,
+              COALESCE(SUM(props->>'$.status' = 'error'), 0)                 AS error_requests,
+              COALESCE(SUM(props->>'$.status' = 'client_abort'), 0)          AS aborted_requests,
+              COALESCE(SUM(CAST(props->>'$.promptTokens' AS UNSIGNED)), 0)     AS prompt_tokens,
+              COALESCE(SUM(CAST(props->>'$.completionTokens' AS UNSIGNED)), 0) AS completion_tokens,
+              COALESCE(SUM(CAST(props->>'$.toolCalls' AS UNSIGNED)), 0)        AS tool_calls,
+              COUNT(DISTINCT user_id)                                 AS users,
+              COALESCE(ROUND(AVG(CAST(props->>'$.latencyMs' AS UNSIGNED))), 0)    AS avg_latency_ms,
+              COALESCE(ROUND(AVG(CAST(props->>'$.firstTokenMs' AS UNSIGNED))), 0) AS avg_first_token_ms,
+              COALESCE(SUM(create_time >= CURDATE()), 0)               AS today_requests
+       FROM track_event
+       WHERE event = ?`,
+      [EV_AI_CHAT],
+    )) as Array<Record<string, unknown>>;
+    return row
+      ? rowToNumbers(row, [
+          'total_requests',
+          'ok_requests',
+          'error_requests',
+          'aborted_requests',
+          'prompt_tokens',
+          'completion_tokens',
+          'tool_calls',
+          'users',
+          'avg_latency_ms',
+          'avg_first_token_ms',
+          'today_requests',
+        ])
+      : {};
+  }
+
+  /** 按天趋势，默认最近 14 天 */
+  async statsDaily(days = 14) {
+    const safeDays = clampDays(days);
+    const rows = (await this.trackRepo.query(
+      // DATE_FORMAT 而不是 DATE()：DATE() 会以 Date 对象返回，JSON 化成 UTC 时间戳
+      // （`2026-09-21` 变成 `2026-09-20T16:00:00Z`），看板上日期会整体差一天。
+      `SELECT DATE_FORMAT(create_time, '%Y-%m-%d')                                      AS day,
+              COUNT(*)                                                  AS requests,
+              COUNT(DISTINCT user_id)                                   AS users,
+              COALESCE(SUM(CAST(props->>'$.promptTokens' AS UNSIGNED)), 0)     AS prompt_tokens,
+              COALESCE(SUM(CAST(props->>'$.completionTokens' AS UNSIGNED)), 0) AS completion_tokens,
+              COALESCE(SUM(CAST(props->>'$.toolCalls' AS UNSIGNED)), 0)        AS tool_calls,
+              COALESCE(ROUND(AVG(CAST(props->>'$.latencyMs' AS UNSIGNED))), 0) AS avg_latency_ms
+       FROM track_event
+       WHERE event = ? AND create_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY day
+       ORDER BY day DESC`,
+      [EV_AI_CHAT, safeDays],
+    )) as Array<Record<string, unknown>>;
+    return toNumbers(rows, [
+      'requests',
+      'users',
+      'prompt_tokens',
+      'completion_tokens',
+      'tool_calls',
+      'avg_latency_ms',
+    ]);
+  }
+
+  /**
+   * 工具使用分布。
+   *
+   * 按「组合」分组（`browse_anime` 与 `browse_anime, search_anime` 各算一组），
+   * 而不是拆成单个工具 —— MySQL 没有内置字符串拆分，为此拉全表到应用层聚合不划算。
+   * 组合视角本身也有信息量：能看出模型是否倾向一轮连调多个工具。
+   *
+   * ⚠️ `toolNames` 落库时是**JSON 数组**（`toolNames: [...toolNames]`，见 `finalize`），
+   * 所以 `props->>'$.toolNames'` 取出来是 `["browse_anime", "search_anime"]`
+   * 这种带方括号和引号的文本，**不是**逗号分隔的裸名字。
+   * 早先这里直接拿它分组，看板上工具名显示成了 `["browse_anime"]`（本开发过程中实测到）。
+   * 用 REPLACE 剥掉 JSON 语法即可；多层 REPLACE 比 JSON_TABLE + 聚合简单得多，
+   * 而工具名是固定标识符、不含方括号引号，不存在误伤。
+   * 保留数组写法是**故意的**：结构化的值将来能用 `JSON_CONTAINS` 做「谁调用过某工具」这类查询，
+   * 拍平成字符串就再也查不了了 —— 所以修的是读侧而不是写侧。
+   */
+  async statsTools(days = 14) {
+    const safeDays = clampDays(days);
+    const rows = (await this.trackRepo.query(
+      `SELECT COALESCE(NULLIF(
+                REPLACE(REPLACE(REPLACE(props->>'$.toolNames', '[', ''), ']', ''), '"', ''),
+              ''), '(无工具)')                                        AS tools,
+              COUNT(*)                                                  AS requests,
+              COALESCE(SUM(CAST(props->>'$.toolCalls' AS UNSIGNED)), 0)  AS calls
+       FROM track_event
+       WHERE event = ? AND create_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY tools
+       ORDER BY requests DESC
+       LIMIT 20`,
+      [EV_AI_CHAT, safeDays],
+    )) as Array<Record<string, unknown>>;
+    return toNumbers(rows, ['requests', 'calls']);
+  }
+
+  /**
+   * 用量最高的用户，便于发现异常账号。
+   *
+   * LEFT JOIN `user` 带出 username/nickname：只给看板一串 UUID 是读不了的，
+   * 而「这个 UUID 是谁」就在隔壁表，没必要让前端再发一轮查询去拼。
+   * 用 LEFT JOIN 而不是 INNER：`user_id` 可为空（匿名埋点），
+   * INNER 会把这些行直接吞掉，排行总数就对不上了。
+   */
+  async statsTopUsers(days = 14, limit = 20) {
+    const safeDays = clampDays(days);
+    const safeLimit = clampLimit(limit, 20, 100);
+    const rows = (await this.trackRepo.query(
+      // 注意 `+` 两侧都要各自 CAST：`props->>` 取出来是**字符串**，
+      // 不 CAST 的话 `+` 会做字符串拼接，SUM 出来的结果毫无意义（本开发过程中踩到 500）。
+      `SELECT t.user_id,
+              u.username,
+              u.nickname,
+              COUNT(*) AS requests,
+              COALESCE(SUM(CAST(t.props->>'$.promptTokens' AS UNSIGNED)
+                         + CAST(t.props->>'$.completionTokens' AS UNSIGNED)), 0) AS tokens
+       FROM track_event t
+       LEFT JOIN \`user\` u ON u.user_id = t.user_id
+       WHERE t.event = ? AND t.create_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY t.user_id, u.username, u.nickname
+       ORDER BY requests DESC
+       LIMIT ?`,
+      [EV_AI_CHAT, safeDays, safeLimit],
+    )) as Array<Record<string, unknown>>;
+    return toNumbers(rows, ['requests', 'tokens']);
+  }
+
+  /**
+   * AI 助手的**访问量 / 消耗 / 使用率** —— 看板的核心指标。
+   *
+   * 为什么单独一个接口而不是让前端拿 `/stats/tools`、`/stats/daily` 去拼：
+   * 「使用率」是**跨功能**口径（AI 对话次数 vs 手动搜索次数），
+   * 它依赖哪几个事件名、分母怎么取，是一个业务定义，只该有一处。
+   * 散在前端拼装的话，改一次口径要翻好几个组件。
+   *
+   * 口径说明（都是近 N 天、按 `create_time` 过滤）：
+   * - `ai_rate` = AI 对话次数 / (AI 对话次数 + 搜索提交次数)。
+   *   回答的是「用户找番时更倾向 AI 还是搜索」。**不含首页/详情页的浏览行为** ——
+   *   那些是「逛」不是「找」，混进来会让分母失真。
+   * - `card_click_rate` = AI 卡片点击次数 / AI 对话次数。
+   *   一轮对话可能返回多张卡，所以这个比值**可能大于 100%**，它衡量的是
+   *   「一次对话平均被点开几个推荐」，不是「多少比例的对话被点开了」。
+   * - 搜索侧对称地给出 `search_card_click_rate`，两者可直接对比。
+   *
+   * 分母为 0 时一律返回 0（而不是 NaN/null）—— 看板不做特殊分支。
+   */
+  async statsEngagement(days = 14) {
+    const safeDays = clampDays(days);
+
+    const rows = (await this.trackRepo.query(
+      `SELECT event,
+              COUNT(*)                AS count,
+              COUNT(DISTINCT user_id) AS users,
+              COALESCE(SUM(CAST(props->>'$.promptTokens' AS UNSIGNED)), 0)     AS prompt_tokens,
+              COALESCE(SUM(CAST(props->>'$.completionTokens' AS UNSIGNED)), 0) AS completion_tokens
+       FROM track_event
+       WHERE event IN (?, ?, ?, ?)
+         AND create_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+       GROUP BY event`,
+      [
+        EV_AI_CHAT,
+        EV_AI_CARD_CLICK,
+        EV_SEARCH_SUBMIT,
+        EV_SEARCH_RESULT_CLICK,
+        safeDays,
+      ],
+    )) as Array<Record<string, unknown>>;
+
+    const [pageRow] = (await this.trackRepo.query(
+      // 按 `page` 列过滤而不是 props：该列由前端 setTrackPage 每次路由切换写入，
+      // 对所有事件都可靠（props 只有 page.view 才带）。
+      `SELECT COUNT(*)                AS pv,
+              COUNT(DISTINCT user_id) AS uv
+       FROM track_event
+       WHERE event = ? AND page = ? AND create_time >= DATE_SUB(CURDATE(), INTERVAL ? DAY)`,
+      [EV_PAGE_VIEW, 'Ai', safeDays],
+    )) as Array<Record<string, unknown>>;
+
+    const byEvent = new Map(rows.map((r) => [String(r.event), r]));
+    const num = (event: string, key: string): number =>
+      Number(byEvent.get(event)?.[key] ?? 0) || 0;
+
+    const chat = num(EV_AI_CHAT, 'count');
+    const search = num(EV_SEARCH_SUBMIT, 'count');
+    const promptTokens = num(EV_AI_CHAT, 'prompt_tokens');
+    const completionTokens = num(EV_AI_CHAT, 'completion_tokens');
+
+    return {
+      // 访问量
+      page_views: Number(pageRow?.pv ?? 0) || 0,
+      page_users: Number(pageRow?.uv ?? 0) || 0,
+      chat_requests: chat,
+      chat_users: num(EV_AI_CHAT, 'users'),
+      // 消耗
+      prompt_tokens: promptTokens,
+      completion_tokens: completionTokens,
+      total_tokens: promptTokens + completionTokens,
+      tokens_per_request: chat
+        ? Math.round((promptTokens + completionTokens) / chat)
+        : 0,
+      // 推荐转化
+      card_clicks: num(EV_AI_CARD_CLICK, 'count'),
+      card_click_rate: pct(num(EV_AI_CARD_CLICK, 'count'), chat),
+      // 与手动搜索对比
+      search_count: search,
+      search_users: num(EV_SEARCH_SUBMIT, 'users'),
+      search_card_clicks: num(EV_SEARCH_RESULT_CLICK, 'count'),
+      search_card_click_rate: pct(num(EV_SEARCH_RESULT_CLICK, 'count'), search),
+      ai_rate: pct(chat, chat + search),
+    };
+  }
+
+  // ── 对话主流程 ──────────────────────────────────────────────
+
+  /**
+   * 处理一轮对话并把 SSE 写给客户端。
+   *
+   * 顺序很讲究，三点都是踩过的坑：
+   * 1. **配额与会话准备都在写 SSE 响应头之前** —— 一旦写了 `text/event-stream` 头，
+   *    超配额/上游不可用就只能靠 error 事件表达，拿不到真实状态码。
+   * 2. **落库要等上游连通之后** —— 否则上游挂了会留下一堆「只有提问、没有回复」的空会话，
+   *    污染用户的会话列表。
+   * 3. **上游连不上要退回配额** —— 用户没拿到任何结果却被扣次数，是会被投诉的；
+   *    退回也只发生在上游不可用（用户无法主动制造），所以不构成绕过配额的口子。
+   */
+  async streamChat(res: Response, userId: string, dto: ChatDto): Promise<void> {
+    await this.consumeQuota(userId);
+
+    // 已有会话需先校验归属；新会话等上游连通后再落库
+    const existing = dto.conversationId
+      ? await this.findOwnedConversation(userId, dto.conversationId)
+      : null;
+
+    const history = existing ? await this.recentMessages(existing.id) : [];
+    const messages = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user' as const, content: dto.message },
+    ];
+
+    // 追番摘要：让模型知道这人的口味、以及别重复推荐他已经在看/看完的
+    let userAnime: string;
+    try {
+      userAnime = await this.buildUserAnimeContext(userId);
+    } catch (e) {
+      // 摘要只是增强，查不到不该让整轮对话失败
+      this.logger.warn(`读取追番摘要失败，按无记录处理: ${e instanceof Error ? e.message : e}`);
+      userAnime = '';
+    }
+
+    // 先把上游接上再写 SSE 头，否则上游挂了就只能发 error 事件、拿不到真实状态码
+    let upstream: { data: Readable };
+    try {
+      upstream = await this.openUpstream(existing?.id, messages, userAnime);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '上游 AI 服务不可用';
+      this.logger.error(`连接 anime-ai 失败: ${msg}`);
+      await this.refundQuota(userId);
+      throw new ServiceUnavailableException(`AI 服务暂时不可用：${msg}`);
+    }
+
+    const conversation =
+      existing ??
+      (await this.conversationRepo.save(
+        this.conversationRepo.create({
+          user_id: userId,
+          title: dto.message.slice(0, 30),
+        }),
+      ));
+
+    await this.messageRepo.save(
+      this.messageRepo.create({
+        conversation_id: conversation.id,
+        user_id: userId,
+        role: 'user',
+        content: dto.message,
+        tool_results: null,
+      }),
+    );
+
+    this.writeSseHeaders(res, conversation.id);
+    await this.pipeEvents(res, upstream.data, conversation.id);
+    // 标题只在一轮完整结束后更新，避免半途失败留下空标题
+    await this.touchConversation(conversation, dto.message);
+  }
+
+  // ── 配额 ────────────────────────────────────────────────────
+
+  /**
+   * 原子自增当日计数并校验配额。
+   *
+   * 用 `INSERT ... ON DUPLICATE KEY UPDATE` 而不是「读-改-写」：
+   * 后者在并发下会丢更新（两个请求都读到 N 都写 N+1），配额形同虚设。
+   *
+   * 计数发生在**请求开始前**，所以用户中途断开也照样扣次数 ——
+   * 否则「断开重连」就能绕过配额。
+   *
+   * 并发下可能略微超扣（多个请求都 +1 后都判定超限），这是**故意 fail-closed**：
+   * 宁可少给几次，也不要账单失控。
+   */
+  private async consumeQuota(userId: string): Promise<void> {
+    if (aiConfig.dailyQuota <= 0) {
+      return;
+    }
+    const today = todayString();
+    await this.usageRepo.query(
+      `INSERT INTO ai_usage (user_id, stat_date, request_count, prompt_tokens, completion_tokens)
+       VALUES (?, ?, 1, 0, 0)
+       ON DUPLICATE KEY UPDATE request_count = request_count + 1`,
+      [userId, today],
+    );
+    const [row] = (await this.usageRepo.query(
+      `SELECT request_count FROM ai_usage WHERE user_id = ? AND stat_date = ?`,
+      [userId, today],
+    )) as Array<{ request_count: number }>;
+
+    if (row && row.request_count > aiConfig.dailyQuota) {
+      throw new HttpException(
+        `今日 AI 对话次数已用完（${aiConfig.dailyQuota} 次/天），请明天再试`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
+  /**
+   * 上游连接失败时退回配额。
+   *
+   * 只在上游不可用时调用 —— 用户无法主动制造这种情况，
+   * 因此不构成「断开重连绕过配额」的口子（那种情况计数保留）。
+   */
+  private async refundQuota(userId: string): Promise<void> {
+    if (aiConfig.dailyQuota <= 0) {
+      return;
+    }
+    await this.usageRepo.query(
+      `UPDATE ai_usage SET request_count = GREATEST(request_count - 1, 0)
+       WHERE user_id = ? AND stat_date = ?`,
+      [userId, todayString()],
+    );
+  }
+
+  /** token 用量在流结束后累加；拿不到就只记次数 */
+  private async addTokens(
+    userId: string,
+    promptTokens: number,
+    completionTokens: number,
+  ): Promise<void> {
+    if (promptTokens <= 0 && completionTokens <= 0) {
+      return;
+    }
+    await this.usageRepo.query(
+      `UPDATE ai_usage SET prompt_tokens = prompt_tokens + ?, completion_tokens = completion_tokens + ?
+       WHERE user_id = ? AND stat_date = ?`,
+      [promptTokens, completionTokens, userId, todayString()],
+    );
+  }
+
+  // ── 会话读写 ────────────────────────────────────────────────
+
+  private async findOwnedConversation(
+    userId: string,
+    conversationId: string,
+  ): Promise<AiConversation> {
+    const found = await this.conversationRepo.findOne({
+      where: { id: conversationId, user_id: userId },
+    });
+    if (!found) {
+      // 不区分「不存在」与「不属于你」，避免通过报错探测他人会话 id
+      throw new NotFoundException('会话不存在');
+    }
+    return found;
+  }
+
+  private async touchConversation(
+    conversation: AiConversation,
+    firstMessage: string,
+  ): Promise<void> {
+    conversation.title = conversation.title ?? firstMessage.slice(0, 30);
+    // update_time 由 @UpdateDateColumn 自动维护，这里显式 save 以触发它
+    await this.conversationRepo.save(conversation);
+  }
+
+  /** 最近 N 条消息，按时间正序返回（送给模型的历史窗口） */
+  private async recentMessages(conversationId: string): Promise<AiMessage[]> {
+    const rows = await this.messageRepo.find({
+      where: { conversation_id: conversationId },
+      order: { create_time: 'DESC' },
+      take: aiConfig.historyWindow,
+    });
+    return rows.reverse();
+  }
+
+  /**
+   * 拼一份用户追番摘要，作为系统提示词的上下文。
+   *
+   * 三条取舍：
+   * 1. **只给标题，不给封面/链接**：模型用不上，白占 token。
+   * 2. **分类 + 限条数**（每类最多 8 部、总数 24）：几十上百部会把对话历史挤掉，
+   *    而模型真正需要的只有「口味」和「哪些别重复推荐」。
+   * 3. **查失败不抛**：摘要只是增强，读不到就按「无记录」处理，不能因此让整轮对话失败。
+   */
+  private async buildUserAnimeContext(userId: string): Promise<string> {
+    const rows = await this.userAnimeRepo.find({
+      where: { user_id: userId },
+      order: { update_time: 'DESC' },
+      take: 60,
+    });
+    if (!rows.length) return '';
+
+    const groups: Record<UserAnimeStatus, string[]> = {
+      watching: [],
+      done: [],
+      wish: [],
+    };
+    for (const row of rows) {
+      const name = (row.name_cn || row.title || '').trim();
+      if (!name) continue;
+      const bucket = groups[row.status];
+      // 带上 bangumi_id：anime-ai 据此去知识库查这部番的题材标签（meta_tags），
+      // 比让模型凭记忆猜「芙莉莲是什么类型」可靠。格式 id:标题，分号分隔。
+      if (bucket && bucket.length < 8) bucket.push(`${row.bangumi_id}:${name}`);
+    }
+
+    const lines: string[] = [];
+    if (groups.watching.length) lines.push(`【在看】${groups.watching.join(';')}`);
+    if (groups.done.length) lines.push(`【看完】${groups.done.join(';')}`);
+    if (groups.wish.length) lines.push(`【想看】${groups.wish.join(';')}`);
+    return lines.join('\n');
+  }
+
+  // ── 上游转发 ────────────────────────────────────────────────
+
+  private async openUpstream(
+    conversationId: string | undefined,
+    messages: Array<{ role: string; content: string }>,
+    userAnime: string,
+  ): Promise<{ data: Readable }> {
+    const body = { conversationId, messages, userAnime };
+    const response = await axios.post(
+      `${aiConfig.serviceUrl}/internal/ai/chat`,
+      body,
+      {
+        responseType: 'stream',
+        // 流式响应不能设总超时，否则长回答会被中途掐断；
+        // 用 timeout 只约束建连/首字节（axios 在收到响应头后即停止计时）
+        timeout: aiConfig.upstreamTimeoutMs,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(aiConfig.internalToken
+            ? { 'X-Internal-Token': aiConfig.internalToken }
+            : {}),
+        },
+        validateStatus: () => true,
+      },
+    );
+
+    if (response.status !== HttpStatus.OK) {
+      const detail = await readStreamSnippet(response.data);
+      throw new Error(`anime-ai 返回 ${response.status} ${detail}`);
+    }
+    return response as unknown as { data: Readable };
+  }
+
+  private writeSseHeaders(res: Response, conversationId: string): void {
+    res.status(HttpStatus.OK);
+    res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-cache, no-transform');
+    res.setHeader('Connection', 'keep-alive');
+    // nginx 默认会缓冲响应，导致前端拿到「一次性吐出」而不是流式
+    res.setHeader('X-Accel-Buffering', 'no');
+    // 新建会话时前端需要立刻知道 conversationId，才能继续追问
+    res.setHeader('X-Conversation-Id', conversationId);
+    res.flushHeaders();
+  }
+
+  /**
+   * 解析上游 SSE、原样转发给前端，同时累计要落库的内容。
+   *
+   * 为什么不用管道直通：必须在转发的同时**解析**出文本、番剧卡片与 token 用量，
+   * 否则无法落库与计费。解析用 StringDecoder 而不是 `chunk.toString()` ——
+   * 中文是多字节，跨 chunk 截断时 `toString()` 会产生乱码。
+   */
+  private async pipeEvents(
+    res: Response,
+    upstream: Readable,
+    conversationId: string,
+  ): Promise<void> {
+    const decoder = new StringDecoder('utf8');
+    let buffer = '';
+    let text = '';
+    let subjects: unknown[] = [];
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let finished = false;
+
+    // ── 遥测（写 ai_request_log 用）──────────────────────────
+    const startedAt = Date.now();
+    /** 首字延迟：比整轮耗时更贴近「体感快不快」 */
+    let firstTokenMs: number | null = null;
+    const toolNames = new Set<string>();
+    let toolCalls = 0;
+    let status: AiEventStatus = 'ok';
+    let finishReason: string | null = null;
+    let model: string | null = null;
+    /** 上游是否已正常收尾；未收尾就 close = 用户中途跑了 */
+    let upstreamEnded = false;
+
+    const userId = (res.req as unknown as { user?: { user_id: string } })?.user
+      ?.user_id;
+
+    const finalize = async () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      try {
+        if (text.trim()) {
+          await this.messageRepo.save(
+            this.messageRepo.create({
+              conversation_id: conversationId,
+              user_id: userId ?? '',
+              role: 'assistant',
+              content: text,
+              tool_results: subjects.length ? subjects : null,
+            }),
+          );
+        }
+        if (userId) {
+          await this.addTokens(userId, promptTokens, completionTokens);
+        }
+        // 明细改为**埋点事件**上报：与前端行为埋点共用一条写入路径与一张表，
+        // 管理员看板就不必为「AI 明细」单独写一套查询。
+        await this.trackService.trackOne(EV_AI_CHAT, {
+          userId,
+          page: 'Ai',
+          target: 'chat',
+          props: {
+            conversationId,
+            model,
+            promptTokens,
+            completionTokens,
+            toolCalls,
+            toolNames: toolNames.size ? [...toolNames] : [],
+            latencyMs: Date.now() - startedAt,
+            firstTokenMs,
+            status,
+            finishReason,
+            // 工具命中条数：能看出「模型取了多少候选才筛出推荐」
+            candidateCount: subjects.length,
+          },
+        });
+      } catch (e) {
+        // 落库失败不能影响已完成的对话；但要留痕，否则配额与历史会静默错账
+        this.logger.error(
+          `落库 AI 消息失败: ${e instanceof Error ? e.message : e}`,
+        );
+      }
+    };
+
+    return new Promise<void>((resolve) => {
+      const onClose = () => {
+        // 客户端断开（关页面/切走）：停掉上游，但仍要落库已生成的内容与用量。
+        // 上游还没收尾就说明是用户中途跑了，单独标 client_abort ——
+        // 把它算进「错误率」会冤枉服务质量。
+        if (!upstreamEnded) {
+          status = 'client_abort';
+        }
+        upstream.destroy();
+      };
+      res.on('close', onClose);
+
+      upstream.on('data', (chunk: Buffer) => {
+        // 统一换行再解析：这样 `\n\n` 分块对 CRLF 的上游也成立
+        buffer += decoder.write(chunk).replace(/\r\n/g, '\n');
+        let idx: number;
+        while ((idx = buffer.indexOf('\n\n')) !== -1) {
+          const block = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+          const parsed = parseSseBlock(block);
+          if (!parsed) {
+            continue;
+          }
+          // **原样转发上游的事件块**。
+          // 曾在这里重新拼成 `event: ${name}\ndata:${data}`，结果网关多出一个空格，
+          // 与 anime-ai 直出的 `event:name` 不一致 —— 同一个协议出现两种线格式，
+          // 排查时要分别对照。透传原始块就不会有这种偏差。
+          if (!res.writableEnded) {
+            res.write(`${block}\n\n`);
+          }
+          switch (parsed.event) {
+            case EV.TEXT_DELTA: {
+              const delta = asRecord(parsed.json)?.text ?? '';
+              if (delta && firstTokenMs === null) {
+                firstTokenMs = Date.now() - startedAt;
+              }
+              text += delta;
+              break;
+            }
+            case EV.TOOL_RESULT: {
+              const rec = asRecord(parsed.json);
+              const list = rec?.subjects;
+              if (Array.isArray(list)) {
+                subjects = subjects.concat(list);
+              }
+              const name = rec?.name;
+              if (typeof name === 'string' && name) {
+                toolCalls += 1;
+                toolNames.add(name);
+              }
+              break;
+            }
+            case EV.ERROR:
+              status = 'error';
+              break;
+            case EV.DONE: {
+              const d = asRecord(parsed.json);
+              if (typeof d?.finishReason === 'string') {
+                finishReason = d.finishReason;
+              }
+              if (typeof d?.model === 'string') {
+                model = d.model;
+              }
+              break;
+            }
+            case EV.USAGE: {
+              const u = asRecord(parsed.json);
+              promptTokens = Number(u?.promptTokens ?? 0) || 0;
+              completionTokens = Number(u?.completionTokens ?? 0) || 0;
+              break;
+            }
+            default:
+              break;
+          }
+        }
+      });
+
+      upstream.on('end', () => {
+        upstreamEnded = true;
+        void (async () => {
+          await finalize();
+          res.off('close', onClose);
+          if (!res.writableEnded) {
+            res.end();
+          }
+          resolve();
+        })();
+      });
+
+      upstream.on('error', (err: Error) => {
+        void (async () => {
+          this.logger.error(`上游流中断: ${err.message}`);
+          if (!res.writableEnded) {
+            res.write(
+              `event: ${EV.ERROR}\ndata:${JSON.stringify({
+                message: 'AI 服务连接中断',
+              })}\n\n`,
+            );
+          }
+          await finalize();
+          res.off('close', onClose);
+          if (!res.writableEnded) {
+            res.end();
+          }
+          resolve();
+        })();
+      });
+    });
+  }
+}
+
+// ── 辅助函数 ──────────────────────────────────────────────────
+
+/**
+ * a / b 的百分比，保留一位小数。
+ *
+ * 分母为 0 时返回 **0 而不是 NaN**：看板不做除零分支，
+ * 而 `NaN` 一旦 JSON 化就是 `null`，前端又得兜一层。
+ */
+function pct(a: number, b: number): number {
+  return b > 0 ? Math.round((a / b) * 1000) / 10 : 0;
+}
+
+/** 本地日期 YYYY-MM-DD（按服务器本地时区，与用户感知的「今天」一致） */
+function todayString(): string {
+  const d = new Date();
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+interface ParsedSse {
+  event: string;
+  data: string;
+  json: unknown;
+}
+
+/** 解析一个 SSE 块；无 data 行返回 null */
+function parseSseBlock(block: string): ParsedSse | null {
+  let event = 'message';
+  const dataLines: string[] = [];
+  for (const line of block.split('\n')) {
+    if (line.startsWith('event:')) {
+      event = line.slice(6).trim();
+    } else if (line.startsWith('data:')) {
+      // SSE 规范允许 `data: xxx`（带一个空格）或 `data:xxx`，两种都要吃
+      dataLines.push(line.slice(5).replace(/^ /, ''));
+    }
+  }
+  if (!dataLines.length) {
+    return null;
+  }
+  const data = dataLines.join('\n');
+  let json: unknown = null;
+  try {
+    json = JSON.parse(data);
+  } catch {
+    json = null;
+  }
+  return { event, data, json };
+}
+
+/** 统计天数收敛到 1–90，避免把任意整数拼进 SQL 的 INTERVAL */
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object'
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+/** 读取一小段流内容用于错误信息（上游非 200 时的响应体） */
+async function readStreamSnippet(stream: Readable): Promise<string> {
+  return new Promise((resolve) => {
+    let acc = '';
+    const done = () => resolve(acc.slice(0, 200));
+    stream.on('data', (c: Buffer) => {
+      acc += c.toString('utf8');
+    });
+    stream.on('end', done);
+    stream.on('error', done);
+    setTimeout(done, 1000);
+  });
+}
