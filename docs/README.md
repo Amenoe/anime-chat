@@ -7,6 +7,7 @@
 
 | 文档 | 内容 |
 | --- | --- |
+| [`DEPLOYMENT.md`](./DEPLOYMENT.md) | 生产部署手册：2C2G/宝塔环境、swap、MySQL 调参、qB、ffmpeg、Nginx、systemd、验收与排错 |
 | [`PROJECT_MEMORY.md`](./PROJECT_MEMORY.md) | 项目概览、当前进度、任务看板、修复记录、文档地图、Git Ship 流程 |
 | [`COGNITION_SYNC.md`](./COGNITION_SYNC.md) | **前后端认知同步**：跨仓契约、命名对齐、改动联动清单、验证与提交约定 |
 | [`api-contract.md`](./api-contract.md) | 接口契约：统一响应信封、双 token 鉴权、用户 / 追番接口 |

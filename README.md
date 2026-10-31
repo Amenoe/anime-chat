@@ -235,6 +235,7 @@ anime-chat/
 
 ## 文档
 
+- [生产部署手册（单机 Ubuntu / 2C2G 宝塔环境）](docs/DEPLOYMENT.md)
 - [项目记忆与任务看板](docs/PROJECT_MEMORY.md)
 - [接口契约](docs/api-contract.md)
 - [前后端认知同步](docs/COGNITION_SYNC.md)
