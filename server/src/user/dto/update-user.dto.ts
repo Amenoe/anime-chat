@@ -1,3 +1,4 @@
+import { Transform } from 'class-transformer';
 import {
   IsIn,
   IsNumber,
@@ -6,17 +7,18 @@ import {
   Matches,
   ValidateIf,
 } from 'class-validator';
+import { IsNickname, normalizeNickname } from '../nickname';
 
 /** ≥6 位，须含字母与数字（有值才校验） */
 const PASSWORD_PATTERN = /^(?=.*[A-Za-z])(?=.*\d).{6,}$/;
 
 /** 允许用户自改的字段（禁止改 username / role） */
 export class UpdateUserDto {
+  /** 昵称只做长度与换行限制，空格/标点/emoji 都允许（规则见 `../nickname.ts`） */
   @IsOptional()
-  @IsString()
-  @Matches(/^[a-zA-Z0-9一-龥]{1,10}$/, {
-    message: '昵称需为 1-10 位中英文或数字',
-  })
+  @Transform(({ value }) => normalizeNickname(value))
+  @IsString({ message: '昵称格式不正确' })
+  @IsNickname()
   nickname?: string;
 
   @IsOptional()

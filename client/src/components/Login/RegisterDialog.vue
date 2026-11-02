@@ -44,6 +44,7 @@
 import { register } from '@/api/login'
 import type { FormInstance } from 'element-plus'
 import { PASSWORD_HINT, passwordRule } from '@/utils/password'
+import { nicknameRule, normalizeNickname } from '@/utils/nickname'
 
 const dialogVisible = ref(false)
 
@@ -65,14 +66,7 @@ const loginRules = {
       message: '请输入3到10位字母或数字',
     },
   ],
-  nickname: [
-    { required: true, trigger: 'blur', message: '请输入您的昵称' },
-    {
-      pattern: /^[a-zA-Z0-9一-龥]{1,10}$/,
-      message: '请输入正确的昵称',
-      trigger: 'change',
-    },
-  ],
+  nickname: [{ required: true, trigger: 'blur', message: '请输入您的昵称' }, nicknameRule()],
   password: [{ required: true, trigger: 'blur', message: '请输入您的密码' }, passwordRule(false)],
 }
 
@@ -82,7 +76,10 @@ const registerClick = () => {
     if (!valid || registering.value) return
     registering.value = true
     try {
-      await register(registerForm.value)
+      await register({
+        ...registerForm.value,
+        nickname: normalizeNickname(registerForm.value.nickname),
+      })
       ElNotification({
         type: 'success',
         title: '注册成功，请登录',

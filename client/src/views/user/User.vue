@@ -260,6 +260,7 @@ import type { UploadFile } from 'element-plus'
 import AppForm from '@/components/AppForm/AppForm.vue'
 import { formatUtcString } from '@/utils/date-format'
 import { PASSWORD_HINT, passwordRule } from '@/utils/password'
+import { NICKNAME_HINT, nicknameRule, normalizeNickname } from '@/utils/nickname'
 import { appConfirm } from '@/composables/useConfirm'
 import { resolveAvatarUrl } from '@/utils/avatar'
 import AvatarCropDialog from '@/components/AvatarCrop/AvatarCropDialog.vue'
@@ -354,15 +355,8 @@ const updateItem: IFormItem[] = [
     field: 'nickname',
     label: '用户昵称',
     type: 'input',
-    placeholder: '请输入昵称',
-    rules: [
-      { required: true, message: '昵称不能为空', trigger: 'blur' },
-      {
-        pattern: /^[a-zA-Z0-9一-龥]{1,10}$/,
-        message: '请输入正确的昵称',
-        trigger: 'change',
-      },
-    ],
+    placeholder: NICKNAME_HINT,
+    rules: [{ required: true, message: '昵称不能为空', trigger: 'blur' }, nicknameRule()],
   },
   {
     field: 'password',
@@ -410,7 +404,7 @@ const updateClick = () => {
     if (!ok) return
 
     const payload = {
-      nickname: formData.value.nickname,
+      nickname: normalizeNickname(formData.value.nickname),
       password: formData.value.password,
     }
 
