@@ -212,6 +212,27 @@ function lockProgress(art: Artplayer) {
   progress.style.cursor = 'default'
 }
 
+/**
+ * 移动端「全屏后没横过来」的兜底。
+ *
+ * Artplayer 的 `autoOrientation` 只在进入网页全屏 200ms 后判断一次「视频是横的、屏幕是竖的」。
+ * 观众进房时如果房主正暂停在 0:00，分片还没加载、`videoWidth` 是 0，这次判断就会落空，
+ * 而且插件不会再试 —— 于是全屏后一直竖屏（线上实测踩到）。
+ *
+ * 这里等 `loadedmetadata` 后重新发一次 `fullscreenWeb` 事件：插件自己的处理器会再判断一次，
+ * 旋转、`isRotate`、退出全屏时的清理都还走它那一套，不用另写一份 CSS。
+ */
+function retryAutoOrientation() {
+  const art = player
+  if (!art || !art.fullscreenWeb) return
+  // 只在移动端补：Artplayer 给移动端播放器加了 art-mobile，桌面端不该被转
+  const el = art.template?.$player
+  if (!el || !el.classList.contains('art-mobile')) return
+  if (el.classList.contains('art-auto-orientation')) return
+  if (!art.video.videoWidth) return
+  art.emit('fullscreenWeb', true)
+}
+
 function createPlayer(url: string) {
   if (!elRef.value) return
   destroy()
@@ -329,6 +350,15 @@ function createPlayer(url: string) {
   // ::cue 只能作用在 video 元素上，加个 class 让字号规则精确命中
   player.video.classList.add('anime-player__video')
   if (readonly) lockProgress(player)
+
+  // 进全屏时视频还没有尺寸（房主暂停在 0:00）→ 等 metadata 到了再让插件判断一次
+  player.on('fullscreenWeb', (on: boolean) => {
+    if (!on || !player) return
+    if (player.video.videoWidth > 0) return
+    player.once('video:loadedmetadata', () => {
+      setTimeout(retryAutoOrientation, 350)
+    })
+  })
   danmakuPlugin =
     (player.plugins as Record<string, DanmakuHandle> | undefined)?.artplayerPluginDanmuku ?? null
 
