@@ -21,7 +21,7 @@ import { AdminModule } from './admin/admin.module';
       ...DBConifg,
       autoLoadEntities: true, // forFeature() 注册的实体自动加载
       // 开发环境自动同步表结构；生产请改为 false 并走迁移/schema.sql
-      synchronize: true,
+      synchronize: process.env.NODE_ENV !== 'production',
     }),
     StorageModule,
     UserModule,
