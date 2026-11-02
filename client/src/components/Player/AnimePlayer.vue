@@ -28,7 +28,7 @@ const props = defineProps<{
   url?: string | null
   /** 标题展示 */
   title?: string
-  /** 观众模式：禁用播放器交互控件 */
+  /** 观众模式：跟随房主，禁用进度条拖动与快进快退（全屏/音量仍可用） */
   controlled?: boolean
   /** 当前房间同步的播放状态，用于播放器首次就绪时决定是否播放 */
   paused?: boolean
@@ -194,6 +194,24 @@ function destroy() {
   }
 }
 
+/**
+ * 观众模式：锁死进度条，不能拖动 / 点击 / 触摸 seek（进度仍随画面走）。
+ *
+ * ⚠️ 不要用「给外层容器设 `pointer-events: none`」来实现这件事（旧实现就是）：
+ * 1. 那会连全屏、音量按钮一起点不动，手机上连横屏全屏都进不去；
+ * 2. 点了全屏之后 Artplayer 会把播放器节点搬到 `document.body`（`FULLSCREEN_WEB_IN_BODY`），
+ *    挂在祖先上的规则随之失效 —— 观众反而能在全屏里拖动进度条（用户就是这样发现的）。
+ *
+ * 把禁用样式直接写在进度条节点上：节点被搬走也依然生效，
+ * 而且 Artplayer 的触摸 seek 监听本来就绑在这个节点上，一并被 pointer-events 拦住。
+ */
+function lockProgress(art: Artplayer) {
+  const progress = art.template?.$progress
+  if (!progress) return
+  progress.style.pointerEvents = 'none'
+  progress.style.cursor = 'default'
+}
+
 function createPlayer(url: string) {
   if (!elRef.value) return
   destroy()
@@ -215,6 +233,19 @@ function createPlayer(url: string) {
     setting: !readonly,
     playbackRate: !readonly,
     aspectRatio: !readonly,
+    /*
+     * 观众模式禁用键盘快进/快退（hotkey）与视频区左右滑动 seek（gesture）：
+     * 进度以房主为准，观众自己去 seek 只会把自己拖离同步点。
+     * 进度条本身另用 lockProgress() 锁死 —— 见那里的注释。
+     */
+    hotkey: !readonly,
+    gesture: !readonly,
+    /*
+     * 移动端全屏自动横屏（Artplayer 内置插件，桌面端会自动跳过）：
+     * - 原生全屏（Android Chrome）→ screen.orientation.lock('landscape')
+     * - Web 全屏（iOS 等不支持方向锁的浏览器）→ 退化成 CSS 旋转 90° 铺满
+     */
+    autoOrientation: true,
     // Artplayer 内部把 theme 写进元素行内样式变量 --art-theme（setProperty），
     // 因此这里传 var() 可由浏览器解析并跟随主题切换，避免写死主题色。
     theme: 'var(--primary-color)',
@@ -297,6 +328,7 @@ function createPlayer(url: string) {
   player = new Artplayer(options)
   // ::cue 只能作用在 video 元素上，加个 class 让字号规则精确命中
   player.video.classList.add('anime-player__video')
+  if (readonly) lockProgress(player)
   danmakuPlugin =
     (player.plugins as Record<string, DanmakuHandle> | undefined)?.artplayerPluginDanmuku ?? null
 
@@ -535,10 +567,6 @@ defineExpose({ seekTo, setPaused, getPlayer, clearHint })
     &-size {
       width: 96px;
     }
-  }
-
-  &--controlled &__el {
-    pointer-events: none;
   }
 }
 
