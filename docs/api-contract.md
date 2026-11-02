@@ -107,6 +107,10 @@ accessToken 不做服务端吊销，自然过期即可（短时效）。
 Body（仅允许）：`{ "username", "password", "nickname", "avatar?" }`
 服务端默认 `role=user`、`status=0`，`avatar` 缺省用默认头像。
 
+`nickname` 只限 **1–20 个字符**（按 Unicode 码点，一个 emoji 算 1 个）且不能含换行等控制字符，
+首尾空白会被裁掉；空格、标点、颜文字、emoji 均可。规则实现见 `server/src/user/nickname.ts`，
+前端同款校验在 `client/src/utils/nickname.ts`。
+
 ### GET `/api/user/:id` — JWT
 
 返回用户公开信息（无 password）。

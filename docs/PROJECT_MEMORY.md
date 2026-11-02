@@ -138,6 +138,40 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ## 4. 修复记录
 
+### 2026-11-03 · 线上四项：昵称放开、观众锁进度条、移动端横屏、AI 配额复核
+
+**背景**：站点已上线（`http://8.130.120.172`，部署细节见服务器
+`/www/wwwroot/DEPLOYMENT-RECORD.md`），用户提了四点。前三项改代码，第四项是核对既有实现。
+
+1. **昵称限制过严**：旧规则 `^[a-zA-Z0-9一-龥]{1,10}$` 把空格、标点、emoji 全挡住，
+   「夜刀神十香🌸」「kirito · 桐人」都存不进去。改为 **1–20 个码点 + 禁控制字符 + 裁掉首尾空白**，
+   其余放开。前后端同一套规则：`server/src/user/nickname.ts`（`@IsNickname()` 装饰器，
+   顺带解决 `@IsNotEmpty` + `@Matches` 同时失败时拼出两句提示的问题）与
+   `client/src/utils/nickname.ts`（Element Plus 校验器）。`nickname` 列是 `varchar(255)` +
+   `utf8mb4`，**不需要改表**。
+2. **观众能拖进度条**：根因是旧实现给播放器外层容器整体 `pointer-events: none` ——
+   ① 连全屏按钮一起冻住；② 网页全屏时 Artplayer 把播放器节点搬到 `document.body`
+   （`FULLSCREEN_WEB_IN_BODY`），挂在祖先上的规则随之失效，观众反而能在全屏里拖。
+   现在只给 `.art-progress` 节点打行内 `pointer-events: none`（节点被搬走也生效），
+   并关掉 `hotkey` / `gesture`（键盘快进、视频区滑动 seek）。全屏、音量、播放暂停仍可用。
+3. **移动端全屏不横屏**：打开 Artplayer 内置 `autoOrientation`（仅移动端生效）：
+   原生全屏走 `screen.orientation.lock('landscape')`，Web 全屏在 iOS 等不支持方向锁的浏览器上
+   退化为 CSS 旋转 90° 铺满。
+4. **AI 每日次数**：已有实现，无需改动 —— `AiService.consumeQuota()` 在写 SSE 头之前
+   用 `INSERT ... ON DUPLICATE KEY UPDATE` 原子自增 `ai_usage`，超限抛 429
+   「今日 AI 对话次数已用完（50 次/天）」；上游不可达会退回配额；中途断开照扣（防重连绕过）。
+   生产 `.env.production` 已配 `AI_DAILY_QUOTA=50`。
+
+**验证**（本地 dev，2026-11-03）：
+
+- 接口：20 emoji ✅ 201 / 21 码点 ❌ 400 / 纯空格 ❌「昵称不能为空」/ 中英混排 ✅，
+  首尾空格被裁掉。
+- 浏览器（headless Chrome + 真实点播室，房主 + 观众两个账号）：房主 `progress` 的
+  `pointer-events=auto`、观众为 `none`；暂停后观众点击 60%、拖动 10%→90%、按 → ×5、
+  移动端触摸拖进度条与视频区横滑，时间均不变（4.25 → 4.25）；房主点 50% 正常跳到 149s。
+- 移动端（iPhone UA + 390×844）：全屏后 `art-fullscreen-web` + `art-auto-orientation` 同时命中。
+- 昵称表单：`夜刀神十香🌸 · 测试` 无错误提示，21 字提示长度错误。
+
 ### 2026-10-30 · 点播室拆分 + 磁力「边下边播」
 
 **背景**：详情页的播放面板与放映室没有任何联动，谁都能往里塞资源播；同时磁力测试出现
