@@ -6,6 +6,10 @@
 # 健康检查不通过会自动回滚到发布前的 dist 与 lock 文件。
 set -euo pipefail
 
+# SSH 登录 shell 会把 nvm 的 node 顶到 PATH 最前（本机是 v24），而 systemd 服务用的是
+# /usr/bin/node（v22）。统一把系统路径排前面，保证「装依赖」和「跑服务」是同一个 node。
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
+
 PKG=${1:?用法: remote-deploy.sh <tar包> <commit> [APP_DIR]}
 COMMIT=${2:-unknown}
 APP_DIR=${3:-/www/wwwroot/anime-chat}
@@ -44,6 +48,8 @@ tar xzf "$PKG" -C "$STAGE"
 
 PNPM=$(command -v pnpm || true)
 if [ -z "$PNPM" ] && [ -x /usr/local/bin/pnpm ]; then PNPM=/usr/local/bin/pnpm; fi
+
+log "node $(node -v 2>/dev/null || echo 未知)（$(command -v node || echo 未找到)），pnpm $("$PNPM" -v 2>/dev/null || echo 未知)"
 
 OLD_LOCK=""
 if [ -f "$APP_DIR/server/pnpm-lock.yaml" ]; then
