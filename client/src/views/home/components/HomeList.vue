@@ -6,7 +6,7 @@
     <div class="home-list__grid">
       <div v-for="item in listData" :key="item.id" class="anime-card" @click="animeClick(item.id)">
         <div class="anime-card__cover">
-          <img :src="item.images?.common" alt="" />
+          <img :src="bangumiImage(item.images?.common)" alt="" />
           <div class="anime-card__overlay">
             <span v-if="item.rating?.score" class="anime-card__score">
               {{ item.rating.score.toFixed(1) }}
@@ -22,6 +22,7 @@
 <script setup lang="ts">
 import type { IBangumiSubject } from '@/api/types'
 import type { PropType } from 'vue'
+import { bangumiImage } from '@/utils/bangumi-image'
 
 const router = useRouter()
 

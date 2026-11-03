@@ -72,7 +72,10 @@
             @click="animeClick(item.id)"
           >
             <div class="anime-card__cover">
-              <img :src="item.images?.common || defaultCover" :alt="item.name_cn || item.name" />
+              <img
+                :src="bangumiImage(item.images?.common) || defaultCover"
+                :alt="item.name_cn || item.name"
+              />
               <div class="anime-card__overlay">
                 <span v-if="item.rating?.score" class="anime-card__score">
                   {{ item.rating.score.toFixed(1) }}
@@ -103,12 +106,14 @@ import { searchAnime, type BangumiSearchSort } from '@/api/search'
 import type { IBangumiSubject } from '@/api/types'
 import { SEARCH_META_TAG_CATEGORIES } from '@/constants/bangumi-meta-tags'
 import { track } from '@/utils/track'
+import { bangumiImage } from '@/utils/bangumi-image'
+import empty from '@/assets/images/empty.png'
 
 defineOptions({ name: 'Search' })
 
 type SortMode = BangumiSearchSort | 'date'
 
-const defaultCover = 'https://bgm.tv/img/no_icon_subject.png'
+const defaultCover = empty
 const tagCategories = SEARCH_META_TAG_CATEGORIES
 
 const searchText = ref('')

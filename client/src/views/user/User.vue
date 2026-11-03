@@ -52,7 +52,7 @@
             >
               <img
                 class="collect-card__cover"
-                :src="item.cover || defaultCover"
+                :src="bangumiImage(item.cover) || defaultCover"
                 :alt="item.name_cn || item.title || ''"
               />
               <div class="collect-card__body">
@@ -263,11 +263,13 @@ import { PASSWORD_HINT, passwordRule } from '@/utils/password'
 import { NICKNAME_HINT, nicknameRule, normalizeNickname } from '@/utils/nickname'
 import { appConfirm } from '@/composables/useConfirm'
 import { resolveAvatarUrl } from '@/utils/avatar'
+import { bangumiImage } from '@/utils/bangumi-image'
+import empty from '@/assets/images/empty.png'
 import AvatarCropDialog from '@/components/AvatarCrop/AvatarCropDialog.vue'
 
 const activeName = ref('userinfo')
 const collectTab = ref<UserAnimeStatus>('wish')
-const defaultCover = 'https://bgm.tv/img/no_icon_subject.png'
+const defaultCover = empty
 const MAX_AVATAR_SIZE = 5 * 1024 * 1024
 
 const loginStore = useLoginStore()

@@ -40,7 +40,7 @@
             >
               <img
                 class="timeline-card__cover"
-                :src="item.images?.small || item.images?.grid"
+                :src="bangumiImage(item.images?.small || item.images?.grid)"
                 alt=""
               />
               <div class="timeline-card__name">{{ item.name_cn || item.name }}</div>
@@ -55,6 +55,7 @@
 <script setup lang="ts">
 import type { ICalendarItem } from '@/api/types'
 import type { PropType } from 'vue'
+import { bangumiImage } from '@/utils/bangumi-image'
 
 const router = useRouter()
 

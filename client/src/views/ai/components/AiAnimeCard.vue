@@ -7,7 +7,7 @@
     <div class="ai-anime-card__cover">
       <img
         v-if="card.cover && !coverFailed"
-        :src="card.cover"
+        :src="bangumiImage(card.cover)"
         :alt="displayName"
         loading="lazy"
         @error="coverFailed = true"
@@ -35,6 +35,7 @@
 import type { PropType } from 'vue'
 import { useRouter } from 'vue-router'
 import type { IAiAnimeCard } from '@/api/ai'
+import { bangumiImage } from '@/utils/bangumi-image'
 
 const props = defineProps({
   card: {

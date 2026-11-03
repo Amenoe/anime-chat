@@ -12,7 +12,7 @@
         @click="goDetail(item.bangumiId)"
       >
         <div class="recent-card__cover">
-          <img :src="item.cover || defaultCover" :alt="item.title" />
+          <img :src="bangumiImage(item.cover) || defaultCover" :alt="item.title" />
           <div v-if="item.episodeSort != null" class="recent-card__ep">
             第 {{ item.episodeSort }} 话
           </div>
@@ -28,6 +28,7 @@
 import type { PlayHistoryItem } from '@/utils/play-history'
 import type { PropType } from 'vue'
 import empty from '@/assets/images/empty.png'
+import { bangumiImage } from '@/utils/bangumi-image'
 
 const router = useRouter()
 
