@@ -9,6 +9,7 @@
 [![Socket.IO](https://img.shields.io/badge/Socket.IO-4-010101?logo=socket.io)](https://socket.io/)
 [![qBittorrent](https://img.shields.io/badge/qBittorrent-5-2F67B2?logo=qbittorrent)](https://www.qbittorrent.org/)
 [![ffmpeg](https://img.shields.io/badge/ffmpeg-8-007808?logo=ffmpeg)](https://ffmpeg.org/)
+[![CI/CD](https://github.com/Amenoe/anime-chat/actions/workflows/ci-cd.yml/badge.svg)](https://github.com/Amenoe/anime-chat/actions/workflows/ci-cd.yml)
 
 </div>
 
@@ -236,6 +237,7 @@ anime-chat/
 ## 文档
 
 - [生产部署手册（单机 Ubuntu / 2C2G 宝塔环境）](docs/DEPLOYMENT.md)
+- [CI/CD 与发布回滚（§20）](docs/DEPLOYMENT.md#20-cicdgithub-actions)
 - [项目记忆与任务看板](docs/PROJECT_MEMORY.md)
 - [接口契约](docs/api-contract.md)
 - [前后端认知同步](docs/COGNITION_SYNC.md)

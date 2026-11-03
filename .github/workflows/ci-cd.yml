@@ -1,0 +1,128 @@
+# 持续集成 + 持续部署（GitHub Actions）
+#
+# 流程：
+#   PR / push 任意分支 ──► 构建与校验（安装依赖、类型检查、前后端构建）
+#   push main / 手动触发 ──► 构建校验通过后，发布产物到生产服务器并重启服务
+#
+# 设计取舍：构建放在 GitHub 托管 runner 上（服务器只有 2C2G，构建会挤占线上资源），
+# 部署只做「上传 dist → 原子切换 → 必要时装依赖 → 重启 → 健康检查（失败自动回滚）」。
+#
+# 需要在仓库 Settings → Secrets and variables → Actions 中配置：
+#   DEPLOY_SSH_KEY  部署专用私钥（ed25519，见 docs/DEPLOYMENT.md §20）
+#   DEPLOY_HOST     服务器地址，如 8.130.120.172
+#   DEPLOY_USER     登录用户，如 root
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# 同一分支只保留最新一次运行，避免两次部署互相打断
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+  PNPM_VERSION: '10.34.9'
+
+jobs:
+  build:
+    name: 构建与校验
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 安装 pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: 安装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: |
+            client/pnpm-lock.yaml
+            server/pnpm-lock.yaml
+
+      - name: 安装前端依赖
+        run: pnpm --dir client install --frozen-lockfile
+
+      - name: 安装后端依赖
+        run: pnpm --dir server install --frozen-lockfile
+
+      # 拆成 type-check / build-only 两条：client 的 `build` 走 run-p，
+      # 在 Linux + pnpm 10 下会因环境变量透传报错（见 docs/DEPLOYMENT.md）
+      - name: 前端类型检查
+        run: pnpm --dir client type-check
+
+      - name: 前端构建
+        run: pnpm --dir client build-only
+
+      - name: 后端构建
+        run: NODE_OPTIONS=--max-old-space-size=2048 pnpm --dir server build
+
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          retention-days: 5
+          path: |
+            client/dist
+            client/package.json
+            client/pnpm-lock.yaml
+            server/dist
+            server/package.json
+            server/pnpm-lock.yaml
+
+  deploy:
+    name: 部署到生产
+    needs: build
+    # 只有 main 分支的 push 或手动触发才部署；PR 只跑构建校验
+    if: >-
+      github.event_name != 'pull_request' &&
+      (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: http://8.130.120.172
+    steps:
+      - name: 检出部署脚本
+        uses: actions/checkout@v4
+
+      - name: 下载构建产物
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+
+      - name: 配置 SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || '8.130.120.172' }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SSH_KEY:-}" ]; then
+            echo "::error::未配置 DEPLOY_SSH_KEY，见 docs/DEPLOYMENT.md §20" >&2
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # 首次连接信任主机指纹（只写 known_hosts，不改变服务器配置）
+          ssh-keyscan -p 22 -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: 发布
+        env:
+          # 不指定 DEPLOY_SSH_KEY 时脚本默认用 ~/.ssh/deploy_key（上一一步写入）
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST || '8.130.120.172' }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER || 'root' }}
+        run: bash scripts/deploy/deploy.sh

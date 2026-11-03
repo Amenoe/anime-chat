@@ -663,3 +663,112 @@ HLS 分片缓存在 `/tmp/anime-chat-hls`（或 `PLAYBACK_HLS_CACHE_DIR`），**
 - [ ] root 账号只保留必要数量（管理后台可删号/封禁）
 - [ ] 定期备份并演练一次恢复
 - [ ] `.env*` 永不提交到 git（`.gitignore` 已覆盖）
+
+## 20. CI/CD（GitHub Actions）
+
+仓库：`Amenoe/anime-chat` · 工作流：`.github/workflows/ci-cd.yml` ·
+脚本：`scripts/deploy/deploy.sh`（打包上传）+ `scripts/deploy/remote-deploy.sh`（服务器端切换/回滚）
+
+### 20.1 什么时候跑、跑什么
+
+| 事件 | 行为 |
+| --- | --- |
+| push 到 `main` | 构建校验 → 部署到生产 |
+| PR 指向 `main` | 只做构建校验，不部署 |
+| Actions 页面手动 Run workflow | 构建校验 → 部署（用于回滚重发、补发） |
+
+**build job**（GitHub 托管 runner，Node 22 + pnpm 10.34.9）：
+
+1. 前后端 `pnpm install --frozen-lockfile`
+2. 前端 `type-check` + `build-only`（故意拆开，`build` 走 run-p 在 Linux + pnpm 10 会报错）
+3. 后端 `NODE_OPTIONS=--max-old-space-size=2048 nest build`
+4. 上传 `client/dist`、`server/dist` 与各自的 `package.json` / `pnpm-lock.yaml` 作为 artifact
+
+**deploy job**（`needs: build`，environment `production`）：
+
+1. 下载 artifact，用 `DEPLOY_SSH_KEY` 登录服务器
+2. `deploy.sh` 打包 → `scp` 到 `/tmp` → SSH 执行 `remote-deploy.sh`：
+   - 备份现有 `client/dist`、`server/dist` 到 `/www/wwwroot/.anime-chat-deploy/releases/<时间>-<commit>/`
+   - **只有 `pnpm-lock.yaml` 变了**才在服务器执行 `pnpm install --frozen-lockfile`
+   - 原子切换 dist（先 `cp` 到 `.new`，再两次 `mv`），期间不会出现半个目录
+   - `systemctl restart anime-chat-server`
+   - 健康检查：45 秒内 `/api/playback/health/qb` 返回 401（鉴权生效）或 200
+   - 健康检查失败 → 自动恢复备份的 dist/lock、重装旧依赖、重启，并让流水线失败
+3. 发布记录写入 `/www/wwwroot/.anime-chat-deploy/last-deploy.json` 与 `history.log`，只保留最近 5 份备份
+
+> 构建放在 runner 上而不是服务器：这台 2C2G 机器构建时会挤占线上内存/CPU，
+> 部署只做「收产物 + 重启」，正常 20 秒左右完成。
+
+### 20.2 需要配置的 Secrets
+
+GitHub 仓库 → Settings → Secrets and variables → Actions → New repository secret：
+
+| Secret | 值 | 说明 |
+| --- | --- | --- |
+| `DEPLOY_SSH_KEY` | 部署私钥全文（含 `BEGIN/END` 行） | 必须；缺失时流水线给出明确报错 |
+| `DEPLOY_HOST` | `8.130.120.172` | 可选，缺省即此地址 |
+| `DEPLOY_USER` | `root` | 可选，缺省 `root` |
+
+部署密钥是**专用 ed25519 密钥**，与个人密钥分开，可随时单独吊销。首次生成与安装：
+
+```bash
+# 本机生成（无口令，仅供 CI 使用）
+ssh-keygen -t ed25519 -f ~/.ssh/anime-chat-deploy -N "" -C "github-actions@anime-chat"
+
+# 公钥装到服务器（幂等）
+ssh root@8.130.120.172 'mkdir -p /root/.ssh && chmod 700 /root/.ssh && cat >> /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys' \
+  < ~/.ssh/anime-chat-deploy.pub
+
+# 私钥内容复制到 DEPLOY_SSH_KEY
+pbcopy < ~/.ssh/anime-chat-deploy
+```
+
+**启用前先本地验证一次**（不依赖 GitHub 也能发现密钥/网络/权限问题）：
+
+```bash
+DEPLOY_HOST=8.130.120.172 DEPLOY_USER=root \
+DEPLOY_SSH_KEY=$HOME/.ssh/anime-chat-deploy \
+bash scripts/deploy/deploy.sh
+```
+
+**网络前提**：阿里云安全组入方向要放行 GitHub Actions 出口访问 22 端口
+（当前 22 对公网开放，若之后按 §19 收紧为「仅本机 IP」，需要额外放行 runner 的出口段，
+或改用自托管 runner / 固定跳板机）。
+
+### 20.3 手动发布与回滚
+
+手动发布（本地已构建好，或想跳过 CI 直接发）：
+
+```bash
+pnpm --dir client type-check && pnpm --dir client build-only
+pnpm --dir server build
+DEPLOY_HOST=8.130.120.172 ./scripts/deploy/deploy.sh
+```
+
+回滚（自动回滚失败时的人工兜底；备份目录名即发布时间 + commit）：
+
+```bash
+ssh root@8.130.120.172
+ls -1 /www/wwwroot/.anime-chat-deploy/releases/        # 最新在最下
+R=/www/wwwroot/.anime-chat-deploy/releases/<时间戳>-<commit>
+
+rm -rf /www/wwwroot/anime-chat/client/dist
+cp -a "$R/client-dist" /www/wwwroot/anime-chat/client/dist
+rm -rf /www/wwwroot/anime-chat/server/dist
+cp -a "$R/server-dist" /www/wwwroot/anime-chat/server/dist
+systemctl restart anime-chat-server
+curl -s -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3000/api/playback/health/qb   # 预期 401
+```
+
+也可以在 Actions 页面 **Re-run** 某次成功的部署，产物就是那次 commit 的构建结果。
+
+### 20.4 注意事项
+
+- **服务器不再承担构建**：生产 `dist/` 全部来自 CI。服务器 git 工作区的
+  `server/package.json`、`server/pnpm-lock.yaml` 会被同步成 CI 版本，`git status`
+  可能显示 modified —— 属于预期，`dist/` 本就在 `.gitignore` 里。
+- **数据库结构变更不会自动执行**：`docs/schema.sql` 里的建表/ALTER 仍需人工在
+  §16 的流程里执行，工作流只负责代码与静态产物。
+- **同一分支并发**：workflow 带 `concurrency` 取消旧运行；本地手动发布请避开正在跑的流水线。
+- **环境变量**：`server/.env.production` 不在仓库也不在产物里，部署不会覆盖它；
+  但 `client` 的构建期变量来自仓库里的 `client/.env.production`，改它要提交后才会生效。
