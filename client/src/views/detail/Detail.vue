@@ -31,7 +31,7 @@
       <!-- Hero 区 -->
       <div class="hero">
         <div class="hero__cover">
-          <img :src="bangumiImage(detailData.images?.large)" alt="" />
+          <img :src="bangumiImage(detailData.images?.large || detailData.images?.common)" alt="" />
         </div>
         <div class="hero__meta">
           <h1 class="hero__title">{{ displayName }}</h1>

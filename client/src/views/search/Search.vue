@@ -73,7 +73,14 @@
           >
             <div class="anime-card__cover">
               <img
-                :src="bangumiImage(item.images?.common) || defaultCover"
+                :src="
+                  bangumiImage(
+                    item.images?.common ||
+                      item.images?.large ||
+                      item.images?.medium ||
+                      item.images?.small,
+                  ) || defaultCover
+                "
                 :alt="item.name_cn || item.name"
               />
               <div class="anime-card__overlay">

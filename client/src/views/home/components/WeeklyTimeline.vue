@@ -40,7 +40,7 @@
             >
               <img
                 class="timeline-card__cover"
-                :src="bangumiImage(item.images?.small || item.images?.grid)"
+                :src="bangumiImage(item.images?.small || item.images?.grid || item.images?.large)"
                 alt=""
               />
               <div class="timeline-card__name">{{ item.name_cn || item.name }}</div>

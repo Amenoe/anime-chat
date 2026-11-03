@@ -6,7 +6,17 @@
     <div class="home-list__grid">
       <div v-for="item in listData" :key="item.id" class="anime-card" @click="animeClick(item.id)">
         <div class="anime-card__cover">
-          <img :src="bangumiImage(item.images?.common)" alt="" />
+          <img
+            :src="
+              bangumiImage(
+                item.images?.common ||
+                  item.images?.large ||
+                  item.images?.medium ||
+                  item.images?.small,
+              )
+            "
+            alt=""
+          />
           <div class="anime-card__overlay">
             <span v-if="item.rating?.score" class="anime-card__score">
               {{ item.rating.score.toFixed(1) }}
