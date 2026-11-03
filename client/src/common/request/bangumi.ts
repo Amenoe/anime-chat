@@ -23,10 +23,9 @@ type RetryableConfig = InternalAxiosRequestConfig & { _bgmRetried?: boolean }
 const bangumiRequest = axios.create({
   baseURL: BANGUMI_BASE_URL,
   timeout: BANGUMI_TIMEOUT,
-  headers: {
-    // 浏览器会忽略这个头（受限头）；真正生效的是 nginx 转发时补的 User-Agent
-    'User-Agent': 'anime-chat/1.0 (https://github.com/Amenoe/anime-chat)',
-  },
+  // 不在这里设 User-Agent：浏览器把 UA 视为禁止设置的头，控制台会一直报
+  // `Refused to set unsafe header "User-Agent"`。生产由 nginx 反代补 UA
+  // （`proxy_set_header User-Agent ...`），浏览器自带 UA 也满足 Bangumi 的要求。
 })
 
 /**
