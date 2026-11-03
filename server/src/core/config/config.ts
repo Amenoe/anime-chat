@@ -195,8 +195,14 @@ export const aiConfig = {
   maxMessageLength: Number(process.env.AI_MAX_MESSAGE_LENGTH || 2000),
   /** 每次送给模型的最近消息条数（唯一的历史裁剪点） */
   historyWindow: Number(process.env.AI_HISTORY_WINDOW || 20),
-  /** 建连/首字节超时；流式开始后由 streamTimeoutMs 兜底 */
-  upstreamTimeoutMs: Number(process.env.AI_UPSTREAM_TIMEOUT_MS || 30000),
+  /**
+   * 建连/首字节超时；同时是 Node http 的 **socket 空闲超时**。
+   *
+   * 工具执行期间（Bangumi/TMDB 跨境请求）可能几十秒不产出 SSE 事件，
+   * 30s 会把「工具还在跑」误判成「上游挂了」并掐断连接 —— 用户看到的就是
+   * 「AI 服务连接中断」。120s 给工具留足时间，整轮总时限仍由 streamTimeoutMs 兜底。
+   */
+  upstreamTimeoutMs: Number(process.env.AI_UPSTREAM_TIMEOUT_MS || 120000),
   /** 单次流式总时限，需大于 anime-ai 侧模型超时（60s） */
   streamTimeoutMs: Number(process.env.AI_STREAM_TIMEOUT_MS || 180000),
 };
