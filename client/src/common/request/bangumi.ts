@@ -1,4 +1,5 @@
 import axios from 'axios'
+import type { AxiosError, InternalAxiosRequestConfig } from 'axios'
 
 /**
  * Bangumi API 基址。
@@ -16,6 +17,9 @@ const BANGUMI_BASE_URL =
  */
 const BANGUMI_TIMEOUT = Number(import.meta.env.VITE_BANGUMI_TIMEOUT || 30000)
 
+/** 重试标记挂在 config 上，保证只重试一次 */
+type RetryableConfig = InternalAxiosRequestConfig & { _bgmRetried?: boolean }
+
 const bangumiRequest = axios.create({
   baseURL: BANGUMI_BASE_URL,
   timeout: BANGUMI_TIMEOUT,
@@ -25,13 +29,33 @@ const bangumiRequest = axios.create({
   },
 })
 
+/**
+ * 反代是跨境链路，超时/5xx 是常态而非异常。
+ * 这里对「超时、网络错误、5xx」重试一次：首页是多个并行请求，
+ * 任何一个抖动都会让整屏空白，重试一次比让用户刷新页面便宜得多。
+ */
+function shouldRetry(error: AxiosError): boolean {
+  const status = error.response?.status
+  if (!status) return true // 网络错误 / 超时（浏览器里表现为无 response）
+  return status >= 500
+}
+
 bangumiRequest.interceptors.response.use(
   (response) => response.data,
-  (error) => {
+  async (error: AxiosError) => {
+    const config = error.config as RetryableConfig | undefined
+    if (config && !config._bgmRetried && shouldRetry(error)) {
+      config._bgmRetried = true
+      await new Promise((resolve) => setTimeout(resolve, 600))
+      // 重新走一遍请求与拦截器；返回值仍然是 response.data
+      return bangumiRequest(config)
+    }
     ElNotification({
       type: 'error',
       title: `Bangumi API 请求错误 ${error.response?.status ?? ''}`,
-      message: error.response?.data?.description || error.message,
+      message:
+        (error.response?.data as { description?: string } | undefined)?.description ||
+        error.message,
     })
     return Promise.reject(error)
   },

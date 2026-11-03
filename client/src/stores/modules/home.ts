@@ -13,16 +13,22 @@ export const useHomeStore = defineStore('home', () => {
   const anime_id = ref<number>()
 
   async function homeDataAction() {
-    const [calendarData, hotData] = await Promise.all([getCalendarData(), getHotAnime()])
+    // 两个接口分开结算：反代偶发抖动时，一个失败不该让整屏（尤其每日放送）一起空白
+    const [calendarResult, hotResult] = await Promise.allSettled([getCalendarData(), getHotAnime()])
 
-    calendar.value = calendarData
+    if (calendarResult.status === 'fulfilled') {
+      const calendarData = calendarResult.value
+      calendar.value = calendarData
 
-    const today = new Date().getDay()
-    const weekdayId = today === 0 ? 7 : today
-    const todayAnime = calendarData.find((item) => item.weekday.id === weekdayId)
-    latest.value = todayAnime?.items ?? []
+      const today = new Date().getDay()
+      const weekdayId = today === 0 ? 7 : today
+      const todayAnime = calendarData.find((item) => item.weekday.id === weekdayId)
+      latest.value = todayAnime?.items ?? []
+    }
 
-    hots.value = hotData.data ?? []
+    if (hotResult.status === 'fulfilled') {
+      hots.value = hotResult.value.data ?? []
+    }
   }
 
   const detailLoading = ref(false)
