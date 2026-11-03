@@ -13,22 +13,28 @@ export const useHomeStore = defineStore('home', () => {
   const anime_id = ref<number>()
 
   async function homeDataAction() {
-    // 两个接口分开结算：反代偶发抖动时，一个失败不该让整屏（尤其每日放送）一起空白
-    const [calendarResult, hotResult] = await Promise.allSettled([getCalendarData(), getHotAnime()])
+    // 两个接口各自完成就渲染，互不阻塞：
+    // 反代链路上「热门推荐」（POST 搜索、无法缓存）通常比「每日放送」（GET、可缓存）慢，
+    // 用 Promise.all 等最慢的那个会让整屏空白到几十秒。
+    const calendarTask = getCalendarData()
+      .then((calendarData) => {
+        calendar.value = calendarData
 
-    if (calendarResult.status === 'fulfilled') {
-      const calendarData = calendarResult.value
-      calendar.value = calendarData
+        const today = new Date().getDay()
+        const weekdayId = today === 0 ? 7 : today
+        const todayAnime = calendarData.find((item) => item.weekday.id === weekdayId)
+        latest.value = todayAnime?.items ?? []
+      })
+      .catch(() => undefined)
 
-      const today = new Date().getDay()
-      const weekdayId = today === 0 ? 7 : today
-      const todayAnime = calendarData.find((item) => item.weekday.id === weekdayId)
-      latest.value = todayAnime?.items ?? []
-    }
+    const hotTask = getHotAnime()
+      .then((hotData) => {
+        hots.value = hotData.data ?? []
+      })
+      .catch(() => undefined)
 
-    if (hotResult.status === 'fulfilled') {
-      hots.value = hotResult.value.data ?? []
-    }
+    // 只等待完成，不因单个失败影响另一个
+    await Promise.allSettled([calendarTask, hotTask])
   }
 
   const detailLoading = ref(false)
