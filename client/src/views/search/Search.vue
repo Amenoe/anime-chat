@@ -82,6 +82,7 @@
                   ) || defaultCover
                 "
                 :alt="item.name_cn || item.name"
+                loading="lazy"
               />
               <div class="anime-card__overlay">
                 <span v-if="item.rating?.score" class="anime-card__score">

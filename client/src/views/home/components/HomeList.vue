@@ -16,6 +16,7 @@
               )
             "
             alt=""
+            loading="lazy"
           />
           <div class="anime-card__overlay">
             <span v-if="item.rating?.score" class="anime-card__score">

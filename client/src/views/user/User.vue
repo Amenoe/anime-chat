@@ -54,6 +54,7 @@
                 class="collect-card__cover"
                 :src="bangumiImage(item.cover) || defaultCover"
                 :alt="item.name_cn || item.title || ''"
+                loading="lazy"
               />
               <div class="collect-card__body">
                 <div class="collect-card__title">

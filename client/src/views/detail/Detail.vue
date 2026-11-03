@@ -31,7 +31,10 @@
       <!-- Hero 区 -->
       <div class="hero">
         <div class="hero__cover">
-          <img :src="bangumiImage(detailData.images?.large || detailData.images?.common)" alt="" />
+          <img
+            :src="bangumiOriginal(detailData.images?.large || detailData.images?.common)"
+            alt=""
+          />
         </div>
         <div class="hero__meta">
           <h1 class="hero__title">{{ displayName }}</h1>
@@ -154,7 +157,7 @@ import type { UserAnimeStatus } from '@/api/types'
 import { listRooms, createRoom } from '@/api/room'
 import { appConfirm } from '@/composables/useConfirm'
 import { addPlayHistory } from '@/utils/play-history'
-import { bangumiImage } from '@/utils/bangumi-image'
+import { bangumiOriginal } from '@/utils/bangumi-image'
 
 const router = useRouter()
 const route = useRoute()

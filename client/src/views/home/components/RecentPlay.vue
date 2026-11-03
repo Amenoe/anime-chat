@@ -12,7 +12,7 @@
         @click="goDetail(item.bangumiId)"
       >
         <div class="recent-card__cover">
-          <img :src="bangumiImage(item.cover) || defaultCover" :alt="item.title" />
+          <img :src="bangumiImage(item.cover) || defaultCover" :alt="item.title" loading="lazy" />
           <div v-if="item.episodeSort != null" class="recent-card__ep">
             第 {{ item.episodeSort }} 话
           </div>
