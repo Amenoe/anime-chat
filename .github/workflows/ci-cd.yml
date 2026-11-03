@@ -29,9 +29,9 @@ permissions:
   contents: read
 
 env:
-  # 精确到小版本，与生产服 /usr/bin/node（v22.23.4，systemd 直接用它）保持一致。
-  # 只写 '22' 会取到 runner 镜像里的最新 22.x，构建与运行就出现了版本漂移。
-  NODE_VERSION: '22.23.4'
+  # 精确到小版本，与生产服 /usr/local/bin/node（v24.22.2 → /opt/nodejs，systemd 直接用它）一致。
+  # 只写 '24' 会取到 runner 镜像里的最新 24.x，构建与运行就出现了版本漂移。
+  NODE_VERSION: '24.22.2'
   PNPM_VERSION: '10.34.9'
 
 jobs:

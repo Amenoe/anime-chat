@@ -6,8 +6,9 @@
 # 健康检查不通过会自动回滚到发布前的 dist 与 lock 文件。
 set -euo pipefail
 
-# SSH 登录 shell 会把 nvm 的 node 顶到 PATH 最前（本机是 v24），而 systemd 服务用的是
-# /usr/bin/node（v22）。统一把系统路径排前面，保证「装依赖」和「跑服务」是同一个 node。
+# systemd 服务用的是 /usr/local/bin/node（v24.22.2 → /opt/nodejs），
+# 但不同登录方式的 PATH 可能把 nvm 的 node 顶到前面。统一把系统路径排前面，
+# 保证「装依赖」和「跑服务」是同一个 node。
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:${PATH}"
 
 PKG=${1:?用法: remote-deploy.sh <tar包> <commit> [APP_DIR]}

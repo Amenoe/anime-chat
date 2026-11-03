@@ -93,11 +93,11 @@ apt-get install -y curl git ffmpeg unzip jq ca-certificates
 # 仅当 §2.1 探测到没有 Nginx / MySQL 时才装
 # apt-get install -y nginx mysql-server
 
-# Node.js 22 + pnpm
-curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+# Node.js 24 + pnpm（apt 分支；Alibaba Cloud Linux 用 nodesource rpm 装同版本）
+curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
 apt-get install -y nodejs
 npm i -g pnpm@latest
-node -v        # 预期 v22.x
+node -v        # 预期 v24.x
 pnpm -v        # 预期 10.x / 11.x
 
 # Docker（qBittorrent / MinIO 用）
@@ -402,7 +402,9 @@ User=anime
 WorkingDirectory=/srv/anime-chat/server
 Environment=NODE_ENV=production
 Environment=TZ=Asia/Shanghai
-ExecStart=/usr/bin/node dist/main.js
+# v24 由 /usr/local/bin/node 软链到 /opt/nodejs/v24.22.2（不要用 /root/.nvm 下的路径，
+# 服务以 anime 用户运行，进不去 /root）
+ExecStart=/usr/local/bin/node dist/main.js
 Restart=always
 RestartSec=3
 StandardOutput=append:/var/log/anime-chat/server.log
@@ -677,7 +679,7 @@ HLS 分片缓存在 `/tmp/anime-chat-hls`（或 `PLAYBACK_HLS_CACHE_DIR`），**
 | PR 指向 `main` | 只做构建校验，不部署 |
 | Actions 页面手动 Run workflow | 构建校验 → 部署（用于回滚重发、补发） |
 
-**build job**（GitHub 托管 runner，Node 22 + pnpm 10.34.9）：
+**build job**（GitHub 托管 runner，Node 24.22.2 + pnpm 10.34.9）：
 
 1. 前后端 `pnpm install --frozen-lockfile`
 2. 前端 `type-check` + `build-only`（故意拆开，`build` 走 run-p 在 Linux + pnpm 10 会报错）
