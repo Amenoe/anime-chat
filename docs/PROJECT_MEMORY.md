@@ -138,6 +138,30 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ## 4. 修复记录
 
+### 2026-11-05 · 番剧搜源持久缓存不跟随站点变化（个人中心有源、房间里只有两个 BT）
+
+**现象**：个人中心「数据源 → 站点」已恢复 18 个流媒体源，进入番剧放映室点「选源开播」，
+抽屉里仍只有 2 个 BT 源。
+
+**根因**：站点列表之外还有第二层缓存 —— `sessionStorage` 的搜源结果
+`room-source-cache:v1:<bangumiId>:<sort>`（24h）。`startSearch` 命中时直接
+`searchRows = persisted`，**不校验当前站点列表**，于是修复前写下的「只有两个 BT」结果继续展示。
+这份 key 同样没有用户维度。
+
+**修复**：
+
+- 持久缓存 key 加 user id（`...:<bangumiId>:<uid>:<sort>`），读取时清掉旧的无用户 key。
+- 命中持久缓存时先 `ensureCatalogEntries()` 对齐站点集合：一致才复用搜索结果；
+  不一致（订阅增删、账号切换、旧残缺缓存）直接丢弃并重新搜源。
+- `startSearch` 改为 async；打开抽屉时等行建好再同步「当前源」标记。
+
+**验证**（local dev + 后端 3000，headless Chrome / CDP）：
+
+- 注入旧格式（无 uid）2 行 BT 持久缓存：抽屉显示 **20 行 = 18 个流媒体源 + 2 个 BT**，
+  旧 key 被删除、新 key 写入。
+- 注入新格式 2 行缓存 + 20 条 catalog：识别到集合不一致，重新搜源后同样 20 行。
+- `pnpm type-check`、`pnpm build-only`、`pnpm lint` 全绿。
+
 ### 2026-11-05 · 新用户站点缓存串账号：只剩两个 BT 源、没有流媒体源
 
 **现象**：新注册用户打开「个人中心 → 数据源」，站点区只有 `nyaa.land` / `AnimeGarden`

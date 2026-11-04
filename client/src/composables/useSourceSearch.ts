@@ -97,11 +97,19 @@ export function useSourceSearch(opts?: { clearPlayerHint?: () => void }) {
   }
 
   function persistKey(sort: number) {
+    // 加上 user id：同一浏览器换账号后不能复用上一个人的搜源结果
+    const userId = loginStore.userInfo?.user_id || 'anon'
+    return `${bangumiId.value || animeTitle.value || 'anime'}:${userId}:${sort}`
+  }
+
+  /** 旧版 key（无用户维度），读到就顺手清掉 */
+  function legacyPersistKey(sort: number) {
     return `${bangumiId.value || animeTitle.value || 'anime'}:${sort}`
   }
 
   function loadPersistedRows(sort: number): SearchRow[] | null {
     try {
+      sessionStorage.removeItem(SOURCE_PERSIST_PREFIX + legacyPersistKey(sort))
       const raw = sessionStorage.getItem(SOURCE_PERSIST_PREFIX + persistKey(sort))
       if (!raw) return null
       const parsed = JSON.parse(raw)
@@ -294,7 +302,7 @@ export function useSourceSearch(opts?: { clearPlayerHint?: () => void }) {
     }
   }
 
-  function startSearch(sort: number, opts?: { openDrawer?: boolean }) {
+  async function startSearch(sort: number, opts?: { openDrawer?: boolean }) {
     searchingEpisode.value = sort
     const keyword = (homeStore.animeDetail?.name_cn || homeStore.animeDetail?.name || '').trim()
     const key = cacheKey(keyword, sort)
@@ -344,17 +352,78 @@ export function useSourceSearch(opts?: { clearPlayerHint?: () => void }) {
     // 会话外持久缓存（刷新 / 重新进房后直接展示，不重新搜索）
     const persisted = !cached ? loadPersistedRows(sort) : null
     if (persisted && persisted.length) {
-      console.log('[src-debug] startSearch 命中持久缓存', { key, rows: persisted.length })
-      searchRows.value = persisted
-      sourceSearching.value = false
-      searchCache.set(key, { rows: persisted, searching: false, token: searchToken })
-      // 自动选源模式下同样把持久缓存候选入队尝试播放（与内存缓存命中分支一致）
-      if (autoMode.value) {
-        for (const row of persisted) {
-          if (row.candidates?.length) enqueueCandidates(row.candidates, row.name)
-        }
+      /*
+       * 站点列表必须与当前订阅对齐。之前这里直接展示持久缓存，结果
+       * 「个人中心已经恢复 18 个流媒体源，番剧搜源仍只有两个 BT 源」——
+       * 那份缓存是修复前只拉到 bt1 时写下的，还能活 24 小时。
+       */
+      let entries: MediaCatalogEntry[] = []
+      try {
+        entries = await ensureCatalogEntries()
+      } catch {
+        entries = []
       }
-      return
+      const persistedKeys = new Set(persisted.map((r) => r.key))
+      const sameStations =
+        entries.length > 0 &&
+        entries.length === persistedKeys.size &&
+        entries.every((e) => persistedKeys.has(e.key))
+
+      if (sameStations) {
+        const byKey = new Map(persisted.map((r) => [r.key, r]))
+        searchRows.value = entries.map((e) => {
+          const hit = byKey.get(e.key)
+          return hit
+            ? {
+                ...hit,
+                key: e.key,
+                name: e.name,
+                factoryId: e.factoryId,
+                iconUrl: e.iconUrl,
+                searchConfig: e.searchConfig || {},
+                subscriptionName: e.subscriptionName,
+              }
+            : {
+                key: e.key,
+                name: e.name,
+                factoryId: e.factoryId,
+                iconUrl: e.iconUrl,
+                status: 'pending' as RowStatus,
+                candidates: [],
+                searchConfig: e.searchConfig || {},
+                subscriptionName: e.subscriptionName,
+              }
+        })
+        console.log('[src-debug] startSearch 命中持久缓存', {
+          key,
+          rows: searchRows.value.length,
+        })
+        sourceSearching.value = false
+        searchCache.set(key, {
+          rows: searchRows.value,
+          searching: false,
+          token: searchToken,
+        })
+        // 自动选源模式下同样把持久缓存候选入队尝试播放
+        if (autoMode.value) {
+          for (const row of searchRows.value) {
+            if (row.candidates?.length) enqueueCandidates(row.candidates, row.name)
+          }
+        }
+        return
+      }
+
+      // 站点集合变了（订阅增删 / 账号切换 / 之前缓存残缺）：丢弃缓存重新搜
+      console.log('[src-debug] 持久缓存与当前站点不一致，重新搜索', {
+        key,
+        persisted: persisted.length,
+        entries: entries.length,
+      })
+      try {
+        sessionStorage.removeItem(SOURCE_PERSIST_PREFIX + persistKey(sort))
+      } catch {
+        /* 存储不可用时忽略 */
+      }
     }
 
     const token = ++searchToken
@@ -465,8 +534,8 @@ export function useSourceSearch(opts?: { clearPlayerHint?: () => void }) {
       hasActiveSource: hasActiveSource.value,
       currentSourceKey: currentSourceKey.value,
     })
-    startSearch(sort, { openDrawer: true })
-    syncCurrentSourceFromPlayback()
+    // startSearch 现在要先对齐站点列表（异步），等行建好再匹配当前源
+    void startSearch(sort, { openDrawer: true }).finally(() => syncCurrentSourceFromPlayback())
   }
 
   function beginAutoSelect() {
@@ -483,7 +552,7 @@ export function useSourceSearch(opts?: { clearPlayerHint?: () => void }) {
     autoTried.clear()
     autoPlayingUri.value = ''
     autoStatus.value = '自动选源中…'
-    startSearch(sort, { openDrawer: false })
+    void startSearch(sort, { openDrawer: false })
   }
 
   async function selectCandidate(
