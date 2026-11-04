@@ -15,10 +15,12 @@
 <script setup lang="ts">
 import { useRoomStore } from '@/stores/modules/room'
 import ChatPaneBase from '@/components/Chat/ChatPaneBase.vue'
+import { copyText, shareUrlOf } from '@/utils/share'
 
 /** 放映室聊天：消息与在线成员都来自 room store，面板本身复用 ChatPaneBase */
 const roomStore = useRoomStore()
 const route = useRoute()
+const router = useRouter()
 
 const messages = computed(() => roomStore.messages)
 const connected = computed(() => roomStore.connected)
@@ -32,17 +34,17 @@ function onSend(text: string) {
   roomStore.sendMessage(text)
 }
 
-function copyRoomLink() {
-  const seasonId = route.params.seasonId as string
-  const base = import.meta.env.VITE_BASE_URL || '/'
-  const url = `${location.origin}${base}room/${seasonId}`
-  navigator.clipboard
-    .writeText(url)
-    .then(() => {
-      ElNotification({ type: 'success', title: '已复制放映室链接' })
-    })
-    .catch(() => {
-      ElNotification({ type: 'error', title: '复制失败' })
-    })
+async function copyRoomLink() {
+  const seasonId = String(route.params.seasonId || '')
+  const url = shareUrlOf(router, { name: 'Room', params: { seasonId } })
+  if (await copyText(url)) {
+    ElNotification({ type: 'success', title: '已复制放映室链接' })
+    return
+  }
+  ElNotification({
+    type: 'error',
+    title: '复制失败',
+    message: '浏览器未允许访问剪贴板，请手动复制地址栏链接',
+  })
 }
 </script>

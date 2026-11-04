@@ -36,6 +36,7 @@ import { useVodStore } from '@/stores/modules/vod'
 import { useLoginStore } from '@/stores/modules/login'
 import VodPlayer from '@/components/Vod/VodPlayer.vue'
 import VodChatPane from '@/components/Vod/VodChatPane.vue'
+import { copyText, shareUrlOf } from '@/utils/share'
 
 const route = useRoute()
 const router = useRouter()
@@ -46,13 +47,18 @@ const group = computed(() => vodStore.group)
 const isHost = computed(() => vodStore.role === 'host')
 const joining = computed(() => vodStore.joining)
 
-function copyInvite() {
-  const base = import.meta.env.VITE_BASE_URL || '/'
-  const url = `${location.origin}${base}vod/${route.params.seasonId}`
-  navigator.clipboard
-    .writeText(url)
-    .then(() => ElNotification({ type: 'success', title: '已复制邀请链接' }))
-    .catch(() => ElNotification({ type: 'error', title: '复制失败' }))
+async function copyInvite() {
+  const seasonId = String(route.params.seasonId || '')
+  const url = shareUrlOf(router, { name: 'VodRoom', params: { seasonId } })
+  if (await copyText(url)) {
+    ElNotification({ type: 'success', title: '已复制邀请链接' })
+    return
+  }
+  ElNotification({
+    type: 'error',
+    title: '复制失败',
+    message: '浏览器未允许访问剪贴板，请手动复制地址栏链接',
+  })
 }
 
 function leave() {

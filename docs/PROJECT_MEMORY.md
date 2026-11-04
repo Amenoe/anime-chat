@@ -138,6 +138,49 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ## 4. 修复记录
 
+### 2026-11-04 · 复制链接全线修复（非安全上下文 + 双斜杠）
+
+**背景**：平台只有两处复制链接入口 —— 放映室聊天侧栏「复制链接」（`/room/:seasonId`）
+与点播室房间「复制邀请链接」（`/vod/:seasonId`）。两者都直接调用
+`navigator.clipboard.writeText(origin + base + path)`。
+
+**根因**（headless Chrome 实测）：
+
+1. **线上根本复制不了**：`navigator.clipboard` 只在安全上下文（HTTPS / localhost）存在。
+   生产是 `http://8.130.120.172`，非 localhost 的 http 页面里 `navigator.clipboard` 是
+   `undefined`，`navigator.clipboard.writeText(...)` 直接同步抛 `TypeError`，
+   原来的 `.catch` 根本接不到 —— 点击后没有任何提示，剪贴板也没变。
+2. **双斜杠**：`base` 生产是 `/`，字符串拼接得到 `http://host//room/xxx`；
+   开发是 `/dev/` 才碰巧正确。`base` 若改成不带尾斜杠（`/app`）还会拼出 `/approom/xxx`。
+
+**修复**：
+
+- 新增 `client/src/utils/share.ts`：
+  - `shareUrlOf(router, to)`：用 `router.resolve()` 生成带 base 的 href，再交给
+    `new URL()` 补 origin；`new URL` 会折叠多余斜杠，也避免 `//xxx` 被解析成协议相对地址。
+  - `copyText(text)`：优先 Clipboard API；不可用或被拒时降级到
+    `textarea + document.execCommand('copy')`（含 iOS 的 `setSelectionRange`、复制前后
+    选区/焦点恢复）。返回布尔值，调用方据此提示成功/失败。
+- 两处入口统一改走这两个函数：成功后弹「已复制…」通知（用户明确要求复制完成要有提示），
+  失败弹「浏览器未允许访问剪贴板，请手动复制地址栏链接」。
+
+**验证**（2026-11-04，本地 dev + 后端 3000 + MySQL，headless Chrome 156 / CDP）：
+
+- `pnpm type-check`、`pnpm build-only`、`pnpm lint` 全绿。
+- localhost 安全上下文（`navigator.clipboard=object`）点两处按钮，剪贴板读回
+  `http://localhost:8012/dev/vod/<id>`、`.../dev/room/<id>`，通知「已复制邀请链接/放映室链接」。
+- 局域网 IP `http://192.168.2.80:8012`（非安全上下文，`navigator.clipboard=undefined`）：
+  修复前点击立即抛 `TypeError: Cannot read properties of undefined (reading 'writeText')`、
+  无通知；修复后 `execCommand('copy')` 返回 true、选中文本即完整链接、通知正常。
+- 权限拒绝降级：把 `navigator.clipboard.writeText` 覆写为抛 `NotAllowedError`，
+  `copyText` 仍走 execCommand 成功。
+- URL 规范化：`absoluteShareUrl('/room/abc', 'http://8.130.120.172')` →
+  `http://8.130.120.172/room/abc`；`'//room/abc'` 也归一到同一结果，未变成协议相对地址。
+- 测试账号 `copytest01` 与测试房间已通过级联删号清理。
+
+**已知边界**：未登录用户打开邀请链接仍会被弹回（点播室回 `/vod`、放映室回首页 + 「未登录」提示），
+登录后需重新点一次链接；本次未改登录回跳流程。
+
 ### 2026-11-03 · 线上四项：昵称放开、观众锁进度条、移动端横屏、AI 配额复核
 
 **背景**：站点已上线（`http://8.130.120.172`，部署细节见服务器
