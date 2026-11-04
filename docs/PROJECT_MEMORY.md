@@ -138,6 +138,36 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ## 4. 修复记录
 
+### 2026-11-05 · 新用户站点缓存串账号：只剩两个 BT 源、没有流媒体源
+
+**现象**：新注册用户打开「个人中心 → 数据源」，站点区只有 `nyaa.land` / `AnimeGarden`
+两个磁力源，18 个流媒体源（css1）不出现；订阅区本身正常显示 css1 + bt1 两条。
+
+**根因**：站点列表的 localStorage 缓存 key 是固定的 `media_catalog_entries`，**没有用户维度**。
+同一浏览器切换账号（尤其先退出旧号再注册新号）会直接命中上一个账号的缓存；
+若那份缓存来自「某次 css1 拉取失败、只返回 bt1」的部分结果，新用户就只看到两个 BT 源。
+雪上加霜的是 `listCatalog` 返回的 `errors` 被忽略 ——
+**部分订阅失败的结果也会被缓存 12 小时**，期间刷新页面都不自愈。
+
+**修复**：
+
+- `utils/media-catalog-cache.ts`：缓存 key 改为 `media_catalog_entries:<user_id>`；
+  读取时清理旧的无用户维度 key；`clearCatalogCache()` 清理全部用户维度 key。
+- `views/user/User.vue` 与 `composables/useSourceSearch.ts`：
+  - 读写缓存都带当前 `userInfo.user_id`；
+  - `errors` 非空时**不写缓存**，并弹「部分订阅拉取失败」提示（保留上一次完整列表）。
+
+**验证**（local dev + 后端 3000，headless Chrome / CDP）：
+
+- 复现：注入一份只有 2 条 BT 的旧 `media_catalog_entries` 缓存 + 新账号登录，
+  站点区显示 2 条（修复前）。
+- 修复后同一场景：站点区 20 条 = **18 个流媒体源 + 2 个 BT 源**；
+  旧 key 被删除，新 key `media_catalog_entries:<uid>` 写入 20 条。
+- 用 CDP 拦截 catalog 返回 `errors: ['css1: timeout']`：页面显示 1 条 + 警告提示，
+  localStorage 不产生新缓存（避免不完整结果固化）。
+- 放映室「选源开播」：搜源流程写入同一用户维度缓存 20 条。
+- `pnpm type-check`、`pnpm build-only`、`pnpm lint` 全绿。
+
 ### 2026-11-04 · 复制链接全线修复（非安全上下文 + 双斜杠）
 
 **背景**：平台只有两处复制链接入口 —— 放映室聊天侧栏「复制链接」（`/room/:seasonId`）

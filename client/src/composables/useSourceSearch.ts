@@ -1,5 +1,6 @@
 import { useRoomStore } from '@/stores/modules/room'
 import { useHomeStore } from '@/stores/modules/home'
+import { useLoginStore } from '@/stores/modules/login'
 import {
   buildHlsPlaylistUrl,
   buildPlaybackStreamUrl,
@@ -44,6 +45,7 @@ const SOURCE_PERSIST_PREFIX = 'room-source-cache:v1:'
 export function useSourceSearch(opts?: { clearPlayerHint?: () => void }) {
   const roomStore = useRoomStore()
   const homeStore = useHomeStore()
+  const loginStore = useLoginStore()
   const clearPlayerHint = opts?.clearPlayerHint
 
   const isHost = computed(() => roomStore.role === 'host')
@@ -176,12 +178,16 @@ export function useSourceSearch(opts?: { clearPlayerHint?: () => void }) {
   }
 
   async function ensureCatalogEntries(): Promise<MediaCatalogEntry[]> {
+    // 与个人中心共用同一份按用户隔离的缓存；换账号不能沿用上一个人的站点
+    const userId = loginStore.userInfo?.user_id || ''
     const prefs = loadCatalogPrefs()
-    let entries = loadCatalogCache()
+    let entries = loadCatalogCache(userId)
     if (!entries?.length) {
       const res = await listMediaSourceCatalog()
-      entries = res?.entries || []
-      if (entries.length) saveCatalogCache(entries)
+      const list = res?.entries || []
+      entries = list
+      // 部分订阅失败时不写缓存，避免 12 小时内都少站点
+      if (list.length && !res?.errors?.length) saveCatalogCache(list, userId)
     }
     const merged = applyCatalogPrefs(entries || [], prefs)
     return merged.filter((e) => isCatalogEnabled(e.key, prefs))

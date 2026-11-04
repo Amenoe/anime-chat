@@ -523,10 +523,12 @@ function displaySiteName(e: MediaCatalogEntry) {
 
 /** force=true 跳过 localStorage 重新拉网 */
 async function loadCatalog(force = false) {
+  // 站点缓存按用户隔离：换账号（尤其新注册）不能读上一个人的列表
+  const userId = loginStore.userInfo?.user_id || ''
   catalogLoading.value = true
   try {
     if (!force) {
-      const cached = loadCatalogCache()
+      const cached = loadCatalogCache(userId)
       if (cached?.length) {
         catalogRaw.value = cached
         catalogPrefs.value = loadCatalogPrefs()
@@ -534,10 +536,22 @@ async function loadCatalog(force = false) {
       }
     }
     const res = await listMediaSourceCatalog()
-    catalogRaw.value = res?.entries || []
-    if (catalogRaw.value.length) saveCatalogCache(catalogRaw.value)
+    const entries = res?.entries || []
+    const errors = res?.errors || []
+    if (entries.length) {
+      catalogRaw.value = entries
+      // 部分订阅失败时不写缓存：否则 12 小时内都会缺站点，看起来像「少了几个源」
+      if (!errors.length) saveCatalogCache(entries, userId)
+    }
     catalogPrefs.value = loadCatalogPrefs()
     await loadSources()
+    if (errors.length) {
+      ElNotification({
+        type: 'warning',
+        title: '部分订阅拉取失败',
+        message: errors.join('；'),
+      })
+    }
   } catch {
     if (!catalogRaw.value.length) catalogRaw.value = []
   } finally {
