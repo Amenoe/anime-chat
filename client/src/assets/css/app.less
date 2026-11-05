@@ -65,6 +65,13 @@ html[data-theme='dark'] {
   --el-border-color-lighter: rgba(104, 198, 189, 0.12);
   --el-fill-color-blank: var(--aside-bg-color);
   --el-fill-color-light: rgba(104, 198, 189, 0.08);
+  /*
+   * el-table 的斑马纹直接读 `--el-fill-color-lighter`（见 element-plus 的
+   * `.el-table--striped ... --striped td`）。不覆盖时它用亮色默认值 #fafafa，
+   * 暗色主题下会出现白底白字的行 —— 管理看板「AI 用量 TOP 用户」就这样。
+   */
+  --el-fill-color: var(--surface-weak);
+  --el-fill-color-lighter: var(--surface-weak);
   --el-mask-color: rgba(0, 0, 0, 0.55);
   --el-border-radius-base: 10px;
   --el-font-size-base: 14px;
@@ -126,6 +133,8 @@ html[data-theme='light'] {
   --el-border-color-lighter: rgba(26, 127, 117, 0.14);
   --el-fill-color-blank: var(--aside-bg-color);
   --el-fill-color-light: rgba(26, 127, 117, 0.08);
+  --el-fill-color: var(--surface-weak);
+  --el-fill-color-lighter: var(--surface-weak);
   --el-mask-color: rgba(31, 36, 48, 0.4);
   --el-border-radius-base: 10px;
   --el-font-size-base: 14px;
@@ -333,4 +342,45 @@ body {
 
 .el-empty__description p {
   color: var(--font-unactive-color);
+}
+
+/*
+ * 骨架屏：首页/搜索页共用。
+ * 底色与高光都走主题令牌（--skeleton-base / --skeleton-shine），
+ * 暗色与亮色不需要各写一套。
+ */
+.skeleton-block {
+  width: 100%;
+  aspect-ratio: 3 / 4;
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-base) 25%,
+    var(--skeleton-shine) 37%,
+    var(--skeleton-base) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shine 1.4s ease infinite;
+}
+
+.skeleton-line {
+  height: 14px;
+  margin: 12px 10px;
+  border-radius: 4px;
+  background: linear-gradient(
+    90deg,
+    var(--skeleton-base) 25%,
+    var(--skeleton-shine) 37%,
+    var(--skeleton-base) 63%
+  );
+  background-size: 400% 100%;
+  animation: skeleton-shine 1.4s ease infinite;
+}
+
+@keyframes skeleton-shine {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
 }

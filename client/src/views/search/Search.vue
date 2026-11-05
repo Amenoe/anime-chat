@@ -425,41 +425,7 @@ const animeClick = (id: number) => {
   }
 }
 
-.skeleton-block {
-  width: 100%;
-  aspect-ratio: 3 / 4;
-  background: linear-gradient(
-    90deg,
-    var(--skeleton-base) 25%,
-    var(--skeleton-shine) 37%,
-    var(--skeleton-base) 63%
-  );
-  background-size: 400% 100%;
-  animation: skeleton-shine 1.4s ease infinite;
-}
-
-.skeleton-line {
-  height: 14px;
-  margin: 12px 10px;
-  border-radius: 4px;
-  background: linear-gradient(
-    90deg,
-    var(--skeleton-base) 25%,
-    var(--skeleton-shine) 37%,
-    var(--skeleton-base) 63%
-  );
-  background-size: 400% 100%;
-  animation: skeleton-shine 1.4s ease infinite;
-}
-
-@keyframes skeleton-shine {
-  0% {
-    background-position: 100% 50%;
-  }
-  100% {
-    background-position: 0 50%;
-  }
-}
+/* .skeleton-block / .skeleton-line 是全局样式（assets/css/app.less），首页共用 */
 
 .search-empty {
   padding: 48px 0;

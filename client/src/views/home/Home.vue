@@ -1,9 +1,9 @@
 <template>
   <div id="home" class="page">
     <RecentPlay v-if="recentList.length" :list="recentList" />
-    <HomeList title="热门推荐" :list-data="hots" />
-    <WeeklyTimeline :calendar-data="calendar" />
-    <HomeList title="最近更新" :list-data="latest" />
+    <HomeList title="热门推荐" :list-data="hots" :loading="hotsLoading" />
+    <WeeklyTimeline :calendar-data="calendar" :loading="calendarLoading" />
+    <HomeList title="最近更新" :list-data="latest" :loading="calendarLoading" />
   </div>
 </template>
 
@@ -20,6 +20,8 @@ homeStore.homeDataAction()
 const hots = computed(() => homeStore.hots)
 const latest = computed(() => homeStore.latest)
 const calendar = computed(() => homeStore.calendar)
+const hotsLoading = computed(() => homeStore.hotsLoading)
+const calendarLoading = computed(() => homeStore.calendarLoading)
 const recentList = ref(getPlayHistory())
 </script>
 

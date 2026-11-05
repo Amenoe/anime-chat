@@ -1689,6 +1689,21 @@ async function onDelete(row: IAdminUser) {
 
 .admin-table {
   width: 100%;
+  /*
+   * 所有管理表格共用一套暗色令牌。之前只有 .user-table 覆盖了这些变量，
+   * 「AI 用量 TOP 用户」等表格仍用 Element Plus 的亮色默认值，
+   * 斑马纹（stripe）直接变成白底白字。
+   */
+  --el-table-bg-color: var(--aside-bg-color);
+  --el-table-tr-bg-color: var(--aside-bg-color);
+  --el-table-header-bg-color: var(--bg-color);
+  --el-table-row-hover-bg-color: var(--surface-weak);
+  --el-table-current-row-bg-color: var(--surface-strong);
+  --el-table-expanded-cell-bg-color: var(--aside-bg-color);
+  --el-table-text-color: var(--font-color);
+  --el-table-header-text-color: var(--font-color);
+  --el-table-border-color: var(--surface-strong);
+  --el-fill-color-lighter: var(--surface-weak);
 }
 
 .admin-user {
@@ -1746,16 +1761,6 @@ async function onDelete(row: IAdminUser) {
 
 .user-table {
   width: 100%;
-  --el-table-bg-color: var(--aside-bg-color);
-  --el-table-tr-bg-color: var(--aside-bg-color);
-  --el-table-header-bg-color: var(--bg-color);
-  --el-table-row-hover-bg-color: var(--surface-weak);
-  --el-table-current-row-bg-color: var(--surface-strong);
-  --el-table-expanded-cell-bg-color: var(--aside-bg-color);
-  --el-table-text-color: var(--font-color);
-  --el-table-header-text-color: var(--font-color);
-  --el-table-border-color: var(--surface-strong);
-  --el-fill-color-lighter: var(--surface-weak);
 }
 
 .review-messages {

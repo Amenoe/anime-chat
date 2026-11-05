@@ -3,7 +3,13 @@
     <div class="home-list__header">
       <span class="home-list__title">{{ title }}</span>
     </div>
-    <div class="home-list__grid">
+    <div v-if="loading && !listData.length" class="home-list__grid" aria-hidden="true">
+      <div v-for="n in 12" :key="n" class="anime-card anime-card--skeleton">
+        <div class="anime-card__cover skeleton-block" />
+        <div class="anime-card__skeleton-name skeleton-line" />
+      </div>
+    </div>
+    <div v-else class="home-list__grid">
       <div v-for="item in listData" :key="item.id" class="anime-card" @click="animeClick(item.id)">
         <div class="anime-card__cover">
           <img
@@ -45,6 +51,10 @@ defineProps({
   listData: {
     type: Array as PropType<IBangumiSubject[]>,
     default: () => [],
+  },
+  loading: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -132,6 +142,22 @@ const animeClick = (id: number) => {
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--font-color);
+  }
+
+  /* 骨架卡片：占位条与真实卡片的名字区高度接近，加载完成时不跳动 */
+  &__skeleton-name {
+    height: 14px;
+    margin: 12px 10px;
+  }
+
+  &--skeleton {
+    pointer-events: none;
+    cursor: default;
+
+    &:hover {
+      transform: none;
+      box-shadow: none;
+    }
   }
 }
 

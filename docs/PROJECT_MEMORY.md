@@ -138,6 +138,29 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ## 4. 修复记录
 
+### 2026-11-05 · 管理看板暗色表格白底白字 + 首页骨架屏
+
+**问题一**：管理看板「AI 用量 TOP 用户」的斑马纹行在暗色主题下是白底白字，几乎读不出。
+
+- 根因：Element Plus 的 stripe 直接读 `--el-fill-color-lighter`，而 app.less 只覆盖了
+  `--el-fill-color-light` / `--el-fill-color-blank`，这个变量仍是亮色默认值 `#fafafa`；
+  且只有 `.user-table` 补了 el-table 变量，`AI TOP / 会话 / 埋点 / 审计` 这些
+  `.admin-table` 没有。
+- 修复：两套主题都定义 `--el-fill-color` / `--el-fill-color-lighter`（= `--surface-weak`）；
+  把 el-table 变量从 `.user-table` 提升到 `.admin-table`，所有管理表格统一一套暗色令牌。
+- 验证：暗色 stripe `rgba(255,255,255,.04)` + 白字、亮色 `rgba(31,36,48,.04)` + 深字，
+  控制台无错误。
+
+**问题二**：首页加载慢（Bangumi 反代 2–30s）时只有区块标题，没有加载反馈。
+
+- 修复：home store 增加 `hotsLoading` / `calendarLoading`（两个接口分别结算，快的区块先渲染）；
+  `HomeList` 增加 `loading`（12 张卡片骨架），`WeeklyTimeline` 增加 7 列 × 4 张骨架；
+  骨架样式（`.skeleton-block` / `.skeleton-line` + shimmer）提到全局 `app.less`，
+  搜索页复用同一套并删掉重复定义。
+- 验证：CDP 拦截 `api.bgm.tv` 观察加载中 24 张首页骨架 + 28 张时间表骨架；
+  放行后骨架归零，真实卡片 22 / 时间表 114，无控制台错误。
+- `pnpm type-check`、`pnpm build-only`、`pnpm lint` 全绿。
+
 ### 2026-11-05 · 番剧搜源持久缓存不跟随站点变化（个人中心有源、房间里只有两个 BT）
 
 **现象**：个人中心「数据源 → 站点」已恢复 18 个流媒体源，进入番剧放映室点「选源开播」，

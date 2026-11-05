@@ -7,6 +7,12 @@ export const useHomeStore = defineStore('home', () => {
   const hots = ref<IBangumiSubject[]>([])
   const latest = ref<IBangumiSubject[]>([])
   const calendar = ref<ICalendarItem[]>([])
+  /**
+   * 两个首页接口分别结算，loading 也分开：
+   * 骨架屏按区块显示，等最慢的那个会让快的区块陪跑。
+   */
+  const hotsLoading = ref(false)
+  const calendarLoading = ref(false)
 
   const animeDetail = ref<IBangumiSubject | null>(null)
   const episodes = ref<IBangumiEpisode[]>([])
@@ -16,6 +22,9 @@ export const useHomeStore = defineStore('home', () => {
     // 两个接口各自完成就渲染，互不阻塞：
     // 反代链路上「热门推荐」（POST 搜索、无法缓存）通常比「每日放送」（GET、可缓存）慢，
     // 用 Promise.all 等最慢的那个会让整屏空白到几十秒。
+    hotsLoading.value = true
+    calendarLoading.value = true
+
     const calendarTask = getCalendarData()
       .then((calendarData) => {
         calendar.value = calendarData
@@ -26,12 +35,18 @@ export const useHomeStore = defineStore('home', () => {
         latest.value = todayAnime?.items ?? []
       })
       .catch(() => undefined)
+      .finally(() => {
+        calendarLoading.value = false
+      })
 
     const hotTask = getHotAnime()
       .then((hotData) => {
         hots.value = hotData.data ?? []
       })
       .catch(() => undefined)
+      .finally(() => {
+        hotsLoading.value = false
+      })
 
     // 只等待完成，不因单个失败影响另一个
     await Promise.allSettled([calendarTask, hotTask])
@@ -65,6 +80,8 @@ export const useHomeStore = defineStore('home', () => {
     hots,
     latest,
     calendar,
+    hotsLoading,
+    calendarLoading,
     animeDetail,
     episodes,
     anime_id,

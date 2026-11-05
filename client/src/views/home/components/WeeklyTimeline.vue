@@ -3,7 +3,34 @@
     <div class="weekly-timeline__header">
       <span class="weekly-timeline__title">每日放送</span>
     </div>
-    <div class="timeline">
+    <div
+      v-if="loading && !calendarData.length"
+      class="timeline timeline--skeleton"
+      aria-hidden="true"
+    >
+      <!-- 7 列占位，行高与真实时间轴一致，数据回来时不跳版 -->
+      <div class="timeline__axis">
+        <div v-for="n in 7" :key="'skeleton-label-' + n" class="timeline__day">
+          <span class="timeline-skeleton__weekday skeleton-line" />
+          <div class="timeline__node-wrap">
+            <div class="timeline__line" />
+            <div class="timeline__node" />
+            <div class="timeline__line" />
+          </div>
+        </div>
+      </div>
+      <div class="timeline__columns">
+        <div v-for="n in 7" :key="'skeleton-col-' + n" class="timeline__col">
+          <div class="timeline__cards">
+            <div v-for="m in 4" :key="m" class="timeline-card timeline-card--skeleton">
+              <span class="timeline-card__cover skeleton-block" />
+              <span class="timeline-card__skeleton-name skeleton-line" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div v-else class="timeline">
       <!-- 横向时间轴头部 -->
       <div class="timeline__axis">
         <div
@@ -64,6 +91,10 @@ defineProps({
   calendarData: {
     type: Array as PropType<ICalendarItem[]>,
     default: () => [],
+  },
+  loading: {
+    type: Boolean,
+    default: false,
   },
 })
 
@@ -239,6 +270,25 @@ const goDetail = (id: number) => {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
   }
+
+  /* 骨架占位：与真实卡片同尺寸，加载完不跳版 */
+  &__skeleton-name {
+    flex: 1;
+    min-width: 0;
+    height: 12px;
+    margin: 0;
+  }
+
+  &--skeleton {
+    pointer-events: none;
+    cursor: default;
+  }
+}
+
+.timeline--skeleton .timeline-skeleton__weekday {
+  width: 40px;
+  height: 12px;
+  margin: 4px 0 8px;
 }
 
 @keyframes pulse {
