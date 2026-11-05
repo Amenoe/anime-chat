@@ -73,7 +73,7 @@ const EV = {
  * AI 网关服务。
  *
  * 职责：鉴权后的配额闸门、会话落库、把 anime-ai 的 SSE 透传给前端。
- * **不包含任何检索逻辑** —— 那是 anime-ai 的事（见 docs/ai-rag-practice-roadmap.md）。
+ * **不包含任何检索逻辑** —— 那是 anime-ai 的事（见 docs/AI.md）。
  */
 @Injectable()
 export class AiService {

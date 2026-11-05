@@ -230,11 +230,13 @@ anime-chat/
 │   ├── src/playback/        # 播放会话、qB、HLS 分片、字幕、搜源
 │   ├── scripts/             # auth-e2e / admin-e2e 验收脚本
 │   └── docker-compose.playback.yml
-├── docs/                    # 架构、接口契约、播放方案、任务看板
+├── docs/                    # 文档唯一入口：架构、接口、AI、播放、部署、任务看板
 └── package.json             # 根脚本（dev/build/typecheck）
 ```
 
 ## 文档
+
+文档唯一入口：[`docs/README.md`](docs/README.md)（含给 AI 的阅读顺序）。常用：
 
 - [生产部署手册（单机 Ubuntu / 2C2G 宝塔环境）](docs/DEPLOYMENT.md)
 - [CI/CD 与发布回滚（§20）](docs/DEPLOYMENT.md#20-cicdgithub-actions)
@@ -242,6 +244,8 @@ anime-chat/
 - [接口契约](docs/api-contract.md)
 - [前后端认知同步](docs/COGNITION_SYNC.md)
 - [播放架构（BT / HLS / 字幕）](docs/playback-architecture.md)
+- [AI 系统（对话 / RAG / 工具）](docs/AI.md)
+- [管理端路线](docs/admin-roadmap.md)
 
 ## 版本
 

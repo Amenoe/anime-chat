@@ -1,5 +1,9 @@
 # 播放架构（BT / 磁力 → 站内播）
 
+> 本文写**现状与设计**；每条修复的根因、取舍与验证证据见
+> [`PROJECT_MEMORY.md`](./PROJECT_MEMORY.md) §4（2026-10-30 条），这里不重复。
+> 跨端字段语义见 [`COGNITION_SYNC.md`](./COGNITION_SYNC.md) §5.2，接口见 [`api-contract.md`](./api-contract.md)。
+
 ## qBittorrent 要不要装在云服务器上？
 
 **要有一个 qBittorrent 进程，Nest 能 HTTP 访问到即可。**
@@ -16,7 +20,7 @@
 ### 本地开发（macOS / Docker Desktop）
 
 ```bash
-cd anime-chat-server
+cd server
 mkdir -p data/bt-downloads
 docker compose -f docker-compose.playback.yml up -d
 # qB 4.6.1+ 首次启动是随机临时密码，不是 adminadmin：
@@ -55,7 +59,7 @@ QB_DOWNLOAD_PATH=$(pwd)/data/bt-downloads   # 与 compose 的 ./data/bt-download
 ### 云服务器示例
 
 ```bash
-cd anime-chat-server
+cd server
 mkdir -p data/bt-downloads
 docker compose -f docker-compose.playback.yml up -d
 # WebUI 密码见 docker logs 里的临时密码；登录后改成 .env 的 QB_PASSWORD
@@ -87,7 +91,7 @@ docker compose -f docker-compose.playback.yml up -d
 
 ```env
 QB_URL=http://127.0.0.1:8085
-QB_DOWNLOAD_PATH=/var/www/anime-chat-server/data/bt-downloads
+QB_DOWNLOAD_PATH=/www/wwwroot/anime-chat/server/data/bt-downloads
 PLAYBACK_UPLOAD_TO_MINIO=false
 ```
 

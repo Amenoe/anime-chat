@@ -1,8 +1,8 @@
 # 接口契约（前后端共同遵守）
 
-> 统一响应、鉴权方式、用户/认证/追番接口。
-> 放映室、点播室与播放接口见 `PROJECT_MEMORY.md` §2 与 `playback-architecture.md`。
-> 点播室大厅 `GET /api/rooms/vod-lobby`（常驻房间，仅用于聊天）；播放会话
+> 统一响应、鉴权、用户/追番/AI/埋点/管理端接口。
+> 放映室与点播室的概念、字段与同步语义见 [`COGNITION_SYNC.md`](./COGNITION_SYNC.md) §5
+> 与 [`playback-architecture.md`](./playback-architecture.md)；播放会话
 > `GET /api/playback/sessions/:id` 的 `playUrl`/`remuxRequired` 语义见
 > `COGNITION_SYNC.md` §5.2。
 
@@ -165,7 +165,7 @@ Body：`{ "status": 0 | 1 }`
 
 ## 4. AI 助手（2026-09-21 新增）
 
-网关在 `anime-chat-server`，检索与模型编排在独立的 `anime-ai` 服务（Spring Boot，8013）。
+网关在 `anime-chat/server`，检索与模型编排在独立的 `anime-ai` 服务（Spring Boot，8013）。
 **本服务的 MySQL 是会话历史的权威来源**，anime-ai 无状态。
 
 > **本模块全部接口需要登录**（`@Controller('ai')` 上挂了 `@UseGuards(AuthGuard('jwt'))`）。
@@ -190,7 +190,7 @@ Body：`{ "status": 0 | 1 }`
 | `X-Conversation-Id` | 本轮所属会话 id。**新建会话时前端必须读它**，否则无法续聊 |
 | `X-Accel-Buffering` | `no`（避免 nginx 缓冲导致「一次性吐出」而非流式） |
 
-SSE 事件（与 anime-ai 的协议一致，见 `ai-chat-tech-stack.md` §4.5）：
+SSE 事件（与 anime-ai 的协议一致，见 `AI.md` §2.2）：
 
 ```
 event:text-delta    data:{"text":"..."}
@@ -298,7 +298,7 @@ toolCalls / toolNames / latencyMs / firstTokenMs / status / finishReason / candi
 `finishReason` 除上游给的 `STOP` 等值外，还有 `SCOPE_REJECTED` ——
 anime-ai 的**话题范围守卫**拦下非动漫提问时给出。这种轮次是**正常业务结果**：
 HTTP 200、不发 `error` 事件、`status=ok`、`model=null`、token 全为 0。
-所以看板的错误率**不会**被拒答污染（见 §4 与 `ai-chat-tech-stack.md` §4.5）。
+所以看板的错误率**不会**被拒答污染（见 §4 与 `AI.md` §2.4）。
 
 > 前端 `ai.send.click`/`ai.done` 与后端 `ai.chat` 是**两个视角**，不是重复：
 > 后端知道 token、模型、上游耗时；前端知道用户等了多久、看到几张卡片、是否中途放弃。

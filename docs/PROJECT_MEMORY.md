@@ -4,17 +4,14 @@
 > 修改代码、推进任务或发现新问题后，请同步更新「任务看板」与「修复记录」。
 > 已废弃 superpowers 框架（2026-08-16），相关文档已清理；此文档取代旧的 specs/plans 作为唯一项目记忆。
 
-### 文档地图
+### 文档入口
 
-| 文档 | 内容 |
-| --- | --- |
-| `PROJECT_MEMORY.md`（本文） | 项目概览、进度、任务看板、修复记录、Git Ship 流程 |
-| `COGNITION_SYNC.md` | **前后端认知同步**：跨仓契约、命名对齐、改动联动清单、验证与提交约定 |
-| `api-contract.md` | 接口契约：统一响应信封、双 token 鉴权、用户/追番接口 |
-| `playback-architecture.md` | 播放架构：BT/磁力 → 站内播、qBittorrent 部署 |
-| `schema.sql` | 全量表结构（生产建库依据，改实体后必须同步） |
+完整文档地图与给 AI 的阅读顺序见 [`README.md`](./README.md)。本文只保留**项目记忆**
+（概览、进度、看板、修复记录）；跨端约定、接口、播放与 AI 分别见
+`COGNITION_SYNC.md`、`api-contract.md`、`playback-architecture.md`、`AI.md`。
 
-> 各仓 AI 助手工作规则与代码导览：`anime-chat/AGENTS.md`（前端）、`anime-chat-server/AGENTS.md`（后端）、`anime-ai/AGENTS.md`（AI 服务）。
+> 代码仓级工作规则：`../client/AGENTS.md`（前端）、`../server/AGENTS.md`（后端）、
+> 独立仓 `../../anime-ai/AGENTS.md`（AI 服务）。
 
 ---
 
@@ -22,7 +19,7 @@
 
 | 项 | 说明 |
 | --- | --- |
-| 前端 | `anime-chat` — Vue 3 + TS + Vite + Pinia + Element Plus + Artplayer + hls.js + socket.io-client |
+| 前端 | `client/` — Vue 3 + TS + Vite + Pinia + Element Plus + Artplayer + hls.js + socket.io-client |
 | 后端 | `server/` — NestJS 9 + TypeORM 0.2 + Socket.IO + MySQL + MinIO + qBittorrent |
 | **AI 服务** | **`anime-ai`** — Spring Boot 4.0.8 + Java 21 + LangChain4j 1.20.0（2026-09-21 新增）。只做检索与模型编排，不碰业务数据；监听 8013 |
 | 定位 | 动漫讨论平台 +「放映室」一起看：左播放右聊天、房主强同步、按随机 `season_id` 多厅；AI 助手提供推荐/寻找番剧 |
@@ -64,29 +61,47 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 - 全局响应 `{ code, message, data }`（TransformInterceptor）；错误由 HttpExceptionFilter 统一，**并带真实 HTTP 状态码**（前端静默刷新依赖这一点）
 - 鉴权：passport-jwt + **双 token**（accessToken 短时效不落库 / refreshToken 长时效落库可吊销，刷新即轮换）；流接口额外支持 `?token=`（video/hls 无法带 Header）
-- 模块：auth / user / user-anime / group（旧聊天）/ room（放映室）/ chat（Socket Gateway）/ playback（播放）/ media-source（数据源）/ storage（MinIO 头像）/ anime（本地兜底）
+- 模块：auth / user / user-anime / group（旧聊天）/ room（放映室）/ chat（Socket Gateway）/ playback（播放）/ media-source（数据源）/ storage（MinIO 头像）/ ai（网关）/ track（埋点）/ admin（管理端）
 - 数据库：MySQL `anime_chat`；dev 用 TypeORM `synchronize: true`，**生产关掉并用 `docs/schema.sql` 建表**
 - 头像存 MinIO Private 桶，DB 记代理路径 `/api/images/avatars/...`，前端经 `resolveAvatarUrl` 访问
 
 ---
 
-## 2. 当前进度（截至 2026-09-15）
+## 2. 当前进度（截至 2026-11-05）
+
+> 平台已上线生产（`http://8.130.120.172`，2C2G，Nginx + systemd + GitHub Actions 自动部署），
+> 部署细节见 [`DEPLOYMENT.md`](./DEPLOYMENT.md)。单仓（`client/` + `server/` + `docs/`，tag `v1.0.0`）。
 
 ### 已完成
 
-- 登录/注册/JWT、头像裁剪上传（MinIO）、个人中心追番（想看/在看/看完）与数据源订阅管理
-- 首页/搜索/详情页全部走 Bangumi API；详情页点集 → 列房/创建确认 → `/room/:seasonId`
-- 播放模块：流媒体 Range 代理、m3u8 相对 URI 改写 + 同源代理 enc.key/ts、BT 磁力边下边播
-- 放映室核心（后端 7-28、前端 7-31 最后提交）：
-  - group 表扩展（`season_id` UNIQUE 房间 key、`episode_*` 内容绑定、`playback_*` 状态）
-  - HTTP `GET/POST /api/rooms`、`GET /api/rooms/by-key/:seasonId`
-  - Socket `joinRoom` / `playback:control`（play/pause/seek/switch_episode/set_source/heartbeat）强同步
-  - 房主离开转让、空房销毁、进出房系统提示、在线成员头像
-  - 前端 `Room.vue` 左播右聊、聊天/播放列表 Tab、观众只读跟随、房主自动/手动选源、移动端适配
-- **双 token 会话与前端静默刷新（2026-09-15，两仓已合入 main 并推送）**
-  - 后端：`refresh_token` 表（只存 sha256）、刷新即轮换、复用检测整户吊销、登出/改密/删号吊销
-  - 前端：401 自动刷新并重放原请求、并发合并、退出登录真正吊销 refreshToken
-- 前后端 `type-check` + `build` 全绿（2026-09-15 复核）；鉴权链路真实接口验收 24/24
+- **账号与用户**：注册/登录、JWT 双 token + 前端静默刷新（刷新即轮换、复用检测整户吊销）、
+  头像裁剪上传（MinIO Private 桶）、昵称放开到 1–20 码点（含 emoji）、个人中心
+- **番剧与数据源**：首页/搜索/详情全部走 Bangumi；追番（想看/在看/看完）；数据源订阅与
+  站点列表（按用户隔离缓存）；首页骨架屏
+- **放映室**（`/room/:seasonId`）：多厅、房主强同步、观众只读跟随、房主离开转让、
+  空房销毁、进出提示、移动端适配
+- **点播室**（`/vod/:seasonId`）：私人房间、邀请链接、房主选源/成员跟随、房主离开解散、
+  无弹幕；与放映室共用 `ChatPaneBase`
+- **播放**：流媒体 Range 代理、m3u8 相对 URI 改写、BT 磁力**边下边播**（qBittorrent）、
+  mkv/HEVC 走 HLS 分片按需转码、内嵌字幕 ASS→VTT（双语合并、字号四档）。
+  架构与限制见 [`playback-architecture.md`](./playback-architecture.md)
+- **管理端**：只读看板（埋点 + AI 用量，亮暗主题）、用户管理（分页/搜索/封禁/改角色/
+  重置密码/级联删号）、审计日志、AI 会话审阅、埋点明细查询与 CSV 导出。
+  契约见 [`api-contract.md`](./api-contract.md) §7，设计依据见 [`admin-roadmap.md`](./admin-roadmap.md)
+- **AI 助手**：`/ai` 对话（SSE）、5 个工具、每日配额、话题范围守卫（fail-open）、
+  RAG M2（3000 条语料，`hybrid` 策略 **Hit Rate@10 100% / MRR 0.8056**）、
+  系列级知识（TMDB 分集简介）。细节见 [`AI.md`](./AI.md)
+- **埋点**：`track_event` 统一事件流（前端 `v-track` + 后端 `ai.chat`），看板 v2
+  （访问量/消耗/使用率，事件中文化）
+- **工程**：`schema.sql` 实测可空库建表且幂等（14 张表）；双 token 真实接口验收 24/24、
+  管理端 57 项断言连跑 3 次全绿；单仓两端与 `anime-ai` 的 `type-check` / `build` / `lint` 全绿
+
+### 进行中 / 待办
+
+- **RAG 下一步**（#16）：显式重复 `meta_tags` 做 term weighting、扩充 golden set（现 12 条）；
+  台词 RAG 与弹幕库仅规划、未实施（见 [`AI.md`](./AI.md) §6）
+- **管理端剩余**（#20）：系统配置（P2）、番剧数据维护（按方案 A 删除，见 [`admin-roadmap.md`](./admin-roadmap.md) §8）
+- 已知未修：`pnpm build` 在 pnpm 10 下因 `config.commitizen` 失败（验收用 `type-check && build-only` 代替）
 
 ### 放映室核心设计决策（取代旧 specs，勿再改回）
 
@@ -125,10 +140,10 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 14 | P1 | 文档同步与前后端认知同步 | ✅ 2026-09-15 | 新增 `COGNITION_SYNC.md` + 后端仓级工作指南；`api-contract.md` 重写；`schema.sql` 补 `refresh_token`；`docs/` 纳入版本管理 |
 | 15 | P2 | AI 对话 MVP（对话 + 番剧工具 + SSE + 配额） | ✅ 2026-09-21 | **`anime-ai` 服务**✅（SSE 实测通 DeepSeek、2 个工具、4 个真实接口测试）；**NestJS 网关**✅（`3858179`）；**前端对话界面**✅（`aa65f50`，分支 `feat/ai-chat-ui` 未合并）。浏览器实测 11/11：流式渲染、Markdown、卡片、点按跳详情、刷新恢复；**用户头像同步 + 卡片与推荐对齐 + 埋点体系**✅ 2026-09-21（已合入 main 并推送） |
 | 17 | P2 | 管理员数据看板（展示埋点与 AI 用量） | ✅ 2026-09-22 | 前端 `/admin` + 侧边栏按 role 动态入口；图表用 echarts 6（按需注册 + 独立分包，Admin 101KB / charts 549KB 均为懒加载）。顺带修出 3 个后端统计 bug（见 §4）。**初始没有任何 root 账号**，需手工 `UPDATE user SET role='root'`（见 `api-contract.md` §5） |
-| 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-10-14 | 见 `ai-rag-practice-roadmap.md`。**Java + LangChain4j 1.20.0**；M1 ✅。**M2 五条验收标准全部达成**：3000 条语料入库、Hit Rate@10 **91.7%** / MRR **0.6285**、幂等与增量各有断言脚本、冷启动 300 条实测 3.2s。评估与验收脚本在 `anime-ai/eval/`。**下一步**：唯一真失败已定位为「多词查询被强特征词主导」，先做查询分解 + RRF 融合的对照实验，用同一份 golden set 量化收益（见 roadmap §3.6 进度） |
+| 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-10-23 | 见 `AI.md`。**M1/M2 已验收**：3000 条语料、幂等/增量断言、冷启动 3 分 42 秒；检索策略对照后 **`hybrid` 成为默认（Hit Rate@10 100% / MRR 0.8056，基线 91.7% / 0.6285）**，RRF 与语料去噪两个改动被数据否掉。**2026-10-23 收尾**：策略/开关改配置、`search_knowledge` 两级降级、工具失败不再把原始异常塞回模型；新增系列级知识（TMDB `series_outline` / `find_character_episodes`）。**M5 取消**，台词 RAG / 弹幕仅规划。下一步：`meta_tags` term weighting、扩 golden set（见 `AI.md` §6） |
 | 18 | P1 | 看板 v2：亮色适配 / 事件中文化 / 指标重构 / AI 登录门禁 | ✅ 2026-09-22 | 新增 `stats/engagement`（访问量·消耗·使用率）；`CHART_COLORS` 改为运行时读 CSS 变量（图表终于跟随主题）；事件中文名映射 `constants/track-events.ts`；AI 页未登录不再发请求。**顺带修出 `search.submit` 从未上报**（见 §4） |
 | 19 | P1 | anime-ai 话题范围守卫（只聊动漫） | ✅ 2026-09-22 | 提示词加固 + 输入前置拦截，**fail-open**。拒答走正常 SSE、`finishReason=SCOPE_REJECTED`、不计为错误。71 项纯函数单测 |
-| 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | 🔄 2026-09-22 | 见 `admin-roadmap.md`。**用户管理（含前端界面）+ 安全收口已完成**（见 §4 修复记录）：封禁列与三处即时失效、`RootGuard` 抽取、`admin/users` 全套接口、级联删号、审计表、`/admin` 用户管理分区（tab 化）；已删越权枚举 `GET /api/user` 与整个停用的番剧 HTTP 子系统。**剩余**：AI 会话审阅、埋点明细查询/导出、系统配置、番剧数据（后者的正解是「删」，见 roadmap §8） |
+| 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | 🔄 2026-10-23 | 见 `admin-roadmap.md`。**已完成**：用户管理（含前端）+ 安全收口（封禁三处即时失效、`RootGuard`、`admin/users`、级联删号、审计表）、**AI 会话审阅**（列表不回标题原文、单会话读取审计）、**埋点明细查询/导出**（游标分页、CSV 注入防护、硬上限）。**剩余**：系统配置（P2）、番剧数据维护（按方案 A 删除，见 roadmap §8） |
 | 21 | P1 | 播放能力拆分：详情页移除播放 + 新增点播室 `/vod` | ✅ 2026-10-30 | 详情页 `PlaybackPanel` 删除；点播室是**私人房间**（`POST /api/rooms/vod`，`anime_id=0` 不进公开列表，邀请链接 `/vod/:seasonId`）：房主选源、成员只读同步，房间内聊天、无弹幕，**房主离开即解散**；聊天面板抽 `ChatPaneBase` 与放映室共用；双浏览器实测：建房→邀请→跟随播放→聊天→房主退出解散 |
 | 22 | P1 | 修「下载前就判定不能播 / 下载完也不能播」→ 边下边播 | ✅ 2026-10-30 | ① `create()` 不再同步等 metadata（超时不再是 400）；② qB 加种幂等 + 只下选中文件 + 顺序下载；③ 出流按「已下载字节」裁剪 Range，不足返回 503；④ **`local_path` 曾被写成种子目录**（多文件种子 `content_path` 是目录）→ 下载完也播不了；⑤ mkv/HEVC 用 ffmpeg 转 HLS 分片（真实时长 + 可拖动）；⑥ 前端缓冲自动重试。见 §4 |
 | 24 | P2 | 字幕字号可调（ASS 特效暂不做） | ✅ 2026-10-31 | `AnimePlayer` 用 `video::cue` 动态规则给 80/100/130/160% 四档，localStorage 持久化；ASS 特效（描边/字体/定位）需要 JASSUB 或服务端烧录，方案已写进 `playback-architecture.md`，未实现 |
@@ -493,7 +508,7 @@ Hit Rate@10 **91.7%** / MRR **0.6285**、幂等与增量各有断言脚本、冷
    **store 是单例，登出不清空会把上一个人的会话列表与消息展示给下一个登录的人**，
    属于跨账号数据泄露而非体验问题。
 6. **anime-ai 增加话题范围守卫**：系统提示词加固 + 输入关键词前置拦截（见
-   `ai-chat-tech-stack.md` §4.5）。拒答走**正常 SSE 流**、HTTP 200、
+   `AI.md` §2.4）。拒答走**正常 SSE 流**、HTTP 200、
    `finishReason=SCOPE_REJECTED`、`status=ok` —— 拒答是业务结果不是错误，
    不能污染看板错误率（实测 0 条 `status=error`）。守卫是 **fail-open** 的：
    拒答需要正面证据、放行不需要，误伤（用户直接走掉）远比漏放（浪费一次生成）严重。
@@ -745,43 +760,33 @@ headless Chrome 双场景 —— root 侧边栏出现「管理看板」且 4 个
 
 ---
 
-## 5. Git Ship 流程（本项目规范，之后一律按此执行）
+## 5. Git Ship 流程（本项目规范）
 
-参考成熟实践（git-ship、PR checklist、分支模型）并结合本项目现状定稿：
+参考 git-ship / PR checklist / 分支模型并结合项目现状定稿。**完整校验命令、验证约定与提交规范见
+[`COGNITION_SYNC.md`](./COGNITION_SYNC.md) §8–§9**，这里只记流程要点：
 
 1. **分支**：修复类小改动可直接在 `main` 提交；新功能/重构从最新 `main` 切 `feat/xxx` 或 `fix/xxx` 分支。
 2. **开发**：小步提交，每个 commit 只讲一个故事（可独立 review、可安全 revert）。
-3. **校验（提交前必须全绿）**：
-   - 后端：`pnpm exec tsc --noEmit -p tsconfig.build.json` + `pnpm run build` + prettier check
-   - 前端：`pnpm type-check` + `pnpm build-only` + prettier check
-   - 后端鉴权/DI/路由类改动：**真实启动** `NODE_ENV=development node dist/main.js` 确认（tsc 查不出 DI 错误）
-   - UI 类改动：headless Chrome 渲染复测真实页面
-   - 后端接口类改动：打真实接口跑全链路（详见 `COGNITION_SYNC.md` §8）
+3. **校验**：按 `COGNITION_SYNC.md` §8 跑该仓的 type-check / build / lint；UI 与真实接口改动必须实测。
 4. **CR**：合入前 review 完整 diff（正确性/安全/边界/命名/死代码），阻断项先修再合。
-5. **提交信息**：emoji Angular 中文；subject 小写开头（commitlint 强制）；husky 自动跑 lint-staged（eslint + prettier）。
-6. **合入**：`git merge --no-ff` 回 `main`（保留合入记录）→ `git push origin main` → 删除已合并分支。
-7. **约定**：`.env*` 一律不提交；`client/` 与 `server/` 在同一个仓库里提交/推送；`pnpm-lock.yaml` 由 pnpm 维护，prettier ignore。
-8. **文档**：代码/接口/实体有变动时，按 `COGNITION_SYNC.md` §7「改动联动清单」同步 `docs/` 与两仓 README，并更新 §3 看板与 §4 修复记录。
+5. **提交信息**：emoji Angular 风格中文；subject 不能以大写词开头（commitlint 强制）；husky 自动跑 lint-staged。
+6. **合入**：`git merge --no-ff` 回 `main` → `git push origin main` → 删除已合并分支。
+7. **约定**：`.env*` 一律不提交；`client/`、`server/`、`docs/` 同仓提交；`pnpm-lock.yaml` 由 pnpm 维护。
+8. **文档**：代码/接口/实体有变动时按 `COGNITION_SYNC.md` §7 联动清单同步，并更新 §3 看板与 §4 修复记录。
 
 ---
 
 ## 6. 备注
 
-- **`docs/` 已纳入版本管理**：2026-09-15 起在 `docs/` 单独 `git init` 建仓（不含前后端代码），
-  可独立提交推送。此前它不属于任何仓库、无法随代码提交，是文档漂移的根因。
-- **待用户确认**：前端 `.env.production` 的 `VITE_BASE_URL` 由 `/pro/` 改为 `/` 仍未提交
-  （提交流水线排除 `.env*`），部署路径变更需确认后再处理。
-- AI 能力**端到端已通**：新增第三仓 `anime-ai`（Spring Boot + LangChain4j，端口 8013），
-  加上 `anime-chat-server` 的 `AiModule` 网关（SSE 转发 + 配额 + 会话落库）。
-  实测覆盖：真实调用 DeepSeek、4 个打真实 Bangumi 接口的测试、配额 429、上游不可达 503、
-  越权读写他人会话 404、多轮续聊。侧边栏「时间表」已改为「AI 助手」(`/ai`) 并入 `anime-chat` main。
-  前端 `/ai` 也已从占位页换成真实对话界面（手写 SSE 消费，非 axios）。
-  **三仓均已合入 main 并推送**（2026-09-21）：`anime-chat` `efb902e`、`anime-chat-server` `74486a3`、
-  `anime-ai` `711ed5a`，功能分支已删除。
+- **文档随代码同仓**：2026-10 起 `client/` + `server/` + `docs/` 在同一个 `anime-chat` 仓库，
+  不再有独立文档仓（旧的独立 `docs/` 与 `anime-chat-server/` 目录已并入后归档/删除）。
+  文档漂移的根因是「文档不在代码仓里」，这条不要再回退。
+- **AI 能力已端到端上线**：`anime-ai`（独立仓，8013）+ server 的 `AiModule` 网关（SSE 转发 +
+  配额 + 会话落库）。架构、工具、RAG 与决策见 [`AI.md`](./AI.md)。
 - ⚠️ **一条被实测推翻的早期假设**：曾认为「Bangumi 的结构化过滤足以覆盖找番需求，故 MVP 不需向量库」。
-  M1 打真实接口后确认 `POST /v0/search/subjects` 的 `keyword` 是**标题字面匹配**，
-  `tag`/`meta_tags` 只能收窄、无法用于发现，「按题材找番」在该接口上走不通。
-  更正与替代方案见 `ai-rag-practice-roadmap.md` §2。
-- 计划/规格旧文档（superpowers 时代）已删除；`api-auth-collection.md` 已重写为 `api-contract.md`。
+  M1 实测确认 `POST /v0/search/subjects` 的 `keyword` 是**标题字面匹配**，`tag`/`meta_tags`
+  只能收窄、无法用于发现，「按题材找番」在该接口上走不通 —— 这也正是上向量检索的理由。
+  更正见 [`AI.md`](./AI.md) §2.3。
+- 旧规格文档（superpowers 时代）已删除；`api-auth-collection.md` 已重写为 `api-contract.md`。
   设计决策以上文 §2 与 `COGNITION_SYNC.md` 为准。
-- 两仓均**没有可运行的测试**（后端 jest 已配置但 0 个 spec），验收全靠手动；见 `COGNITION_SYNC.md` §8。
+- 单仓两端都**没有可运行的测试**（server 的 jest 已配置但 0 个 spec），验收全靠手动；见 `COGNITION_SYNC.md` §8。

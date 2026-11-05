@@ -1,8 +1,8 @@
 # 前后端认知同步
 
 > 单仓两端（`client/` 前端 / `server/` 后端）**必须共同遵守**的约定。
-> 两端各自的 AI 助手工作规则与代码导览见 `../client/AGENTS.md` 与 `../server/AGENTS.md`；AI 服务见独立仓库 `anime-ai/AGENTS.md`。
-> 本文只写「跨仓」的部分——凡是两端要对齐的东西都在这里。
+> 两端各自的 AI 助手工作规则与代码导览见 `../client/AGENTS.md` 与 `../server/AGENTS.md`；AI 服务见独立仓库 `../../anime-ai/AGENTS.md`。
+> 本文只写「跨端」的部分——凡是两端要对齐的东西都在这里。
 >
 > 改任何一端前，先确认本文对应小节是否要一起改。
 
@@ -20,36 +20,24 @@
 - 前端与后端在**同一个仓库**（`client/` + `server/`），`docs/` 也在同一仓库根目录；AI 服务 `anime-ai` 是独立仓库
 - 验证环境的真实端口：**前端 8012、后端 3000**（文档/脚本里出现 5173、8080 一律是错的）
 
-## 2. 统一响应信封
+## 2. 统一响应信封（跨端后果）
 
-```json
-// 成功
-{ "code": 200, "message": "请求成功", "data": { } }
-// 失败
-{ "code": 401, "message": "登录已过期，请重新登录", "data": {} }
-```
+字段与状态码的**权威定义**见 [`api-contract.md`](./api-contract.md) §0，这里只记两端必须一起遵守的后果：
 
-- **错误同时带真实 HTTP 状态码**（`HttpExceptionFilter` 里 `response.status(status)`）。
-  前端据此在 axios 错误分支按 `status === 401` 触发静默刷新。
-  如果哪天改成「HTTP 200 + body.code=401」，前端的自动刷新会静默失效——**别改**。
-- 前端 `request` 响应拦截器成功时直接解包成 `response.data.data`，所以业务代码拿到的
-  已经是 `data` 本身，不要再 `.data`
-- ValidationPipe 开了 `whitelist + forbidNonWhitelisted`：**前端多传一个未声明字段就是 400**。
-  新增可选参数时，后端 DTO 必须同步加声明
+- **错误同时带真实 HTTP 状态码**（不是 HTTP 200 + body.code）—— 前端的 401 静默刷新依赖它，**别改**。
+- 前端响应拦截器成功时已解包成 `data` 本身，业务代码不要再 `.data`。
+- `ValidationPipe` 开了 `whitelist + forbidNonWhitelisted`：**前端多传一个未声明字段就是 400**。
+  新增可选参数时后端 DTO 必须同步声明。
 
 ## 3. 鉴权：双 token（跨仓契约）
 
 ### 3.1 职责划分
 
-| | accessToken | refreshToken |
-| --- | --- | --- |
-| 后端 | 签发、校验、**不落库**、拒绝其访问 refresh 之外的用途 | 签发、**只存 sha256**、轮换、吊销 |
-| 前端 | localStorage，`Authorization: Bearer` 随请求下发 | localStorage，**只**发给 `/auth/refresh`、`/auth/logout` |
-| 时效 | `JWT_ACCESS_EXPIRES_IN`（默认 2h） | `JWT_REFRESH_EXPIRES_IN`（默认 30d） |
+字段名、时效、落库与轮换规则的**权威定义**见 [`api-contract.md`](./api-contract.md) §1。两端只记职责：
 
-- 两端字段名固定：`accessToken` / `refreshToken` / `tokenType` / `expiresIn` / `refreshExpiresIn`；
-  登录响应保留 `token` 作为 `accessToken` 的**兼容别名**（新代码用 `accessToken`）
-- 流接口例外：`?token=<accessToken>`（`video`/`hls` 无法带 Header）
+- 后端签发/校验/轮换/吊销；refreshToken 只存 sha256。
+- 前端：accessToken 随 `Authorization` 下发；refreshToken **只**发给 `/auth/refresh` 与 `/auth/logout`。
+- 流接口例外：`?token=<accessToken>`（`video`/`hls` 无法带 Header）。
 
 ### 3.2 前端刷新时序
 
@@ -68,13 +56,9 @@
 
 ### 3.3 吊销责任在后端
 
-| 事件 | 后端行为 | 前端行为 |
-| --- | --- | --- |
-| 主动登出 | `POST /auth/logout` 吊销该条 refreshToken | `logoutAction()`：先调接口再清本地（后端不可用也要清成功） |
-| 改密 | 吊销该用户**全部** refreshToken | 改密成功后用新密码**静默重登**，否则 2h 后会被登出 |
-| 删号 | 吊销该用户全部 refreshToken | —— |
+各事件的吊销行为见 [`api-contract.md`](./api-contract.md) §1「吊销时机」。跨端唯一需要额外记住的配套：
 
-> ⚠️ 改密会连本机一起吊销。这是有意为之（踢掉其他设备），前端必须配套静默重登，
+> ⚠️ 改密会连本机一起吊销（有意踢掉其他设备），前端必须**用新密码静默重登**；
 > 少任何一半都会造成「改完密码过一会儿莫名其妙被登出」。
 
 ### 3.4 泄露检测（有意为之的严格策略）
@@ -139,10 +123,12 @@
 
 ## 6. 数据与建表
 
-- MySQL `anime_chat`；dev 用 TypeORM `synchronize: true` + `autoLoadEntities: true`
-- **生产必须关 `synchronize`**，用 `docs/schema.sql` 建表
-- 改实体后**必须同步 `docs/schema.sql`**，否则生产建库缺表（`refresh_token` 就曾漏过）
-- `refresh_token` 表必须存在，否则**登录直接失败**
+表结构以 [`schema.sql`](./schema.sql) 为唯一事实来源；dev / 生产的差异见
+[`api-contract.md`](./api-contract.md) §6。三条跨端硬约束：
+
+- 改实体后**必须同步 `schema.sql`**，否则生产建库缺表（`refresh_token` 就曾漏过）。
+- 生产必须关 `synchronize`。
+- `refresh_token` 表必须存在，否则**登录直接失败**。
 
 ## 7. 改动联动清单（改一端必须同步另一端/文档）
 
@@ -154,6 +140,8 @@
 | 新增环境变量 | 对应 README 的环境变量表 + 本机 `.env.*` |
 | Socket 事件 / 回包字段 | `chat.gateway.ts` + 前端 `room`/`vod` store + 本文 §4 |
 | 播放会话字段 / 出流参数 | 前端 `api/playback.ts` + `VodPlayer`/`AnimePlayer` + `playback-architecture.md` |
+| AI 网关 / SSE / 工具 / 检索 | `docs/AI.md` + `anime-ai` 的 `SseEvent` / `AnimeTools` / `KnowledgeService` |
+| 文档拆分或合并 | `docs/README.md` 的文档地图与阅读顺序 |
 | 跨仓的概念命名 | 两端一起改，并更新本文 §5 |
 | 任务状态 / 踩坑 | `docs/PROJECT_MEMORY.md` 看板与修复记录 |
 
@@ -161,7 +149,7 @@
 
 两端都没有跑得起来的测试（后端 jest 已配置但 `src/` 下 0 个 spec）。因此：
 
-**每个仓库改动后至少：**
+**单仓两端与 `anime-ai` 改动后至少：**
 
 ```bash
 # 前端
@@ -190,11 +178,13 @@ cd server && node scripts/auth-e2e.mjs    # 24 项断言，测试账号自动清
 
 **注意**：验证服务别占用 3000/8012 上正在跑的开发进程；用独立端口或先确认端口空闲。
 
-## 9. 提交约定（两仓一致）
+## 9. 提交约定（单仓）
+
+> `anime-chat` 单仓一次提交（`client/` + `server/` + `docs/` 可一起）；独立仓 `anime-ai` 单独提交。
 
 - emoji 前缀 Angular 风格，中文 subject：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor`
   `🚀perf` `🚨test` `📦build` `👷ci` `🔂revert`
 - 流程：CR → lint/prettier → type-check → build → 小步 commit → `merge --no-ff` 回 `main`
   → `push origin main` → 删分支
-- **`.env*` 一律不提交**；前后端两仓分开提交；`docs/` 独立提交
+- **`.env*` 一律不提交**
 - 禁止提交 Claude 元数据 trailer

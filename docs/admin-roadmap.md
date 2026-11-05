@@ -44,7 +44,7 @@
 统一用法 `@UseGuards(AuthGuard('jwt'), RootGuard)`；顺手把现有 7 个统计端点的 `assertRoot(req)` 换成守卫，一处定义。
 
 ⚠️ **顺序不能反**：`RootGuard` 依赖 `AuthGuard('jwt')` 填充的 `req.user`。反了则 `req.user` 恒为
-`undefined`、连管理员都 403 —— `anime-chat-server/AGENTS.md` 已记过一次同类坑，换守卫后**依然存在**，只是从「忘挂守卫」
+`undefined`、连管理员都 403 —— `server/AGENTS.md` 已记过一次同类坑，换守卫后**依然存在**，只是从「忘挂守卫」
 变成「挂错顺序」。
 
 **2.2 审计表 `admin_audit_log`**（横切，先建）—— 字段：
@@ -91,7 +91,7 @@ ALTER TABLE `user`
 查一次库（体检 #2），在那里拦一次主键查询就够了 —— 这是该需求能低成本成立的原因。
 
 **有意保留的缺口**：被封用户揣着未过期 accessToken 打 `POST /api/track`，会因 `OptionalJwtGuard`
-丢弃 err 而被记成匿名。不改的理由：埋点必须对「token 过期的访客」也保持匿名可用（`anime-chat-server/AGENTS.md`
+丢弃 err 而被记成匿名。不改的理由：埋点必须对「token 过期的访客」也保持匿名可用（`server/AGENTS.md`
 明确两者冲突时选埋点可用性），改成 401 会误伤正常访客。业务接口全走必需的 `AuthGuard('jwt')`，已被 401 拦住。
 
 **防自锁**：禁止封禁自己；禁止封禁**最后一个未封禁的 root**
@@ -314,7 +314,7 @@ DTO 白名单校验（`forbidNonWhitelisted` 已开）→ 维护界面（列表/
 
 ## 11. 附：改动文件总览
 
-后端路径均在 `anime-chat-server/src/`，前端在 `anime-chat/src/`。
+后端路径在 `server/src/`，前端在 `client/src/`。
 
 | 项 | 新增 | 修改 |
 | --- | --- | --- |
