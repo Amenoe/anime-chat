@@ -6,16 +6,17 @@
     <header v-if="isMobile" class="mobile-nav">
       <span class="mobile-nav__brand">{{ WEB_NAME }}</span>
       <nav class="mobile-nav__links">
-        <router-link
+        <a
           v-for="{ name, routeName, routePath, icon } in sideList"
           :key="routeName"
           class="mobile-nav__link"
           :class="{ active: matchesSideRoute(routePath) }"
-          :to="{ name: routeName }"
+          :href="hrefOf(routeName)"
+          @click="onMobileNavClick($event, routeName)"
         >
           <Icon :name="icon" />
           <span>{{ name }}</span>
-        </router-link>
+        </a>
       </nav>
       <el-avatar class="mobile-nav__avatar" :size="28" :src="avatarUrl" @click="onAvatarClick" />
     </header>
@@ -52,10 +53,12 @@ import RegisterDialog from '@/components/Login/RegisterDialog.vue'
 import { useRouteStore } from '@/stores/modules/route'
 import { useLoginStore } from '@/stores/modules/login'
 import { resolveAvatarUrl } from '@/utils/avatar'
+import { useLeaveRoomGuard } from '@/composables/useLeaveRoomGuard'
 
 const WEB_NAME = import.meta.env.VITE_APP_TITLE
 const routeStore = useRouteStore()
 const loginStore = useLoginStore()
+const { guardLeaveRoom } = useLeaveRoomGuard()
 /*
  * 必须包一层 computed，不能写成 `const sideList = routeStore.routeList`：
  * Pinia 在那个写法下返回的是**当时的数组快照**，routeList 现在是按 role 计算的，
@@ -67,6 +70,11 @@ const currentRoute = useRoute()
 
 function matchesSideRoute(routePath: string): boolean {
   return currentRoute.path.split('/').includes(routePath)
+}
+
+/** 用真实 href：默认点击走 SPA（带离开确认），中键 / Cmd+点击可新开标签页 */
+function hrefOf(routeName: string): string {
+  return router.resolve({ name: routeName }).href
 }
 
 const mq = window.matchMedia('(max-width: 768px)')
@@ -89,6 +97,15 @@ function onAvatarClick() {
   } else {
     loginRef.value!.dialogVisible = true
   }
+}
+
+/** 移动端顶部导航也要走房间离开确认（与桌面侧边栏同一套守卫） */
+async function onMobileNavClick(e: MouseEvent, routeName: string) {
+  if (e.button === 1 || e.metaKey || e.ctrlKey || e.shiftKey) return
+  e.preventDefault()
+  const ok = await guardLeaveRoom()
+  if (!ok) return
+  router.push({ name: routeName })
 }
 
 function showRegisterDialog() {

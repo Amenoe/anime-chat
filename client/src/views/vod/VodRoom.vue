@@ -37,11 +37,13 @@ import { useLoginStore } from '@/stores/modules/login'
 import VodPlayer from '@/components/Vod/VodPlayer.vue'
 import VodChatPane from '@/components/Vod/VodChatPane.vue'
 import { copyText, shareUrlOf } from '@/utils/share'
+import { useLeaveRoomGuard } from '@/composables/useLeaveRoomGuard'
 
 const route = useRoute()
 const router = useRouter()
 const vodStore = useVodStore()
 const loginStore = useLoginStore()
+const { guardLeaveRoom } = useLeaveRoomGuard()
 
 const group = computed(() => vodStore.group)
 const isHost = computed(() => vodStore.role === 'host')
@@ -61,7 +63,9 @@ async function copyInvite() {
   })
 }
 
-function leave() {
+async function leave() {
+  // 与放映室一致：显式退出也先二次确认（房主离开会解散房间，必须提醒）
+  if (!(await guardLeaveRoom())) return
   vodStore.leaveRoom()
   router.push('/vod')
 }

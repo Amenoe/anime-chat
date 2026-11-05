@@ -1,5 +1,10 @@
 <template>
   <div id="detail" class="page">
+    <button class="detail-back" type="button" @click="goBack">
+      <span class="detail-back__arrow" aria-hidden="true">←</span>
+      返回
+    </button>
+
     <!-- 骨架屏 -->
     <div v-if="loading" class="sk">
       <div class="sk__hero">
@@ -163,6 +168,15 @@ const router = useRouter()
 const route = useRoute()
 const anime_id = Number(route.params.anime_id)
 
+/** 返回上一页；从外部链接直接打开时没有历史，退回首页 */
+function goBack() {
+  if (window.history.state?.back) {
+    router.back()
+    return
+  }
+  router.push('/home')
+}
+
 const homeStore = useHomeStore()
 const loginStore = useLoginStore()
 const userAnimeStore = useUserAnimeStore()
@@ -307,6 +321,35 @@ async function onCollectCommand(cmd: string) {
 
 @accent: var(--primary-color);
 @card-bg: var(--aside-bg-color);
+
+// ── 返回按钮 ──
+.detail-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 18px;
+  padding: 6px 14px;
+  border: 1px solid rgba(104, 198, 189, 0.24);
+  border-radius: 8px;
+  background: var(--aside-bg-color);
+  color: var(--font-color);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: pointer;
+  transition: color 0.2s, border-color 0.2s, background 0.2s;
+
+  &__arrow {
+    font-size: 15px;
+  }
+
+  &:hover,
+  &:focus-visible {
+    color: var(--primary-color);
+    border-color: var(--primary-color);
+    background: rgba(104, 198, 189, 0.08);
+    outline: none;
+  }
+}
 
 // ── 骨架屏 ──
 .sk-shine {
