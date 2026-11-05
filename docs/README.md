@@ -36,6 +36,13 @@
 | 部署 / 排错 | `DEPLOYMENT.md` | `PROJECT_MEMORY.md` §6 |
 | 提交 / 验证 | `COGNITION_SYNC.md` §8–§9 | `PROJECT_MEMORY.md` §5 |
 
+
+## 技能库
+
+可复用的 AI 工作流在 [`../skills/`](../skills/)（与本文档同级），按任务选一个：
+`ship-code`（提交）、`docs-maintain`（文档）、`verify`（验收）、`ai-service`（AI）、
+`deploy`（发布）。技能只写流程，具体契约仍以本目录文档为准。
+
 ## 维护约定
 
 - 改代码 / 接口 / 实体后，按 `COGNITION_SYNC.md` §7「改动联动清单」同步本文档目录。

@@ -246,6 +246,7 @@ anime-chat/
 - [播放架构（BT / HLS / 字幕）](docs/playback-architecture.md)
 - [AI 系统（对话 / RAG / 工具）](docs/AI.md)
 - [管理端路线](docs/admin-roadmap.md)
+- [AI 技能库（提交 / 文档 / 验收 / AI / 发布）](skills/README.md)
 
 ## 版本
 
