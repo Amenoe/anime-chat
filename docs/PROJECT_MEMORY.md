@@ -153,6 +153,16 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ## 4. 修复记录
 
+### 2026-11-06 · 聊天输入框工具按钮内嵌左下角
+
+- 去掉输入框左侧独立的图片/麦克风按钮列；两个按钮改为绝对定位在输入框左下角
+  （`.chat-pane__editor-tools`），字数统计留在右下角。
+- 输入框 `box-sizing: border-box`、`min-height: 64px`、底部 padding 30px 给按钮留位；
+  发送按钮高度同步改为 64px，和输入框垂直对齐。
+- 验证：旧的 `.chat-pane__tools` 数量 0；输入框与发送按钮均为 64px、垂直中心同为 790px；
+  工具按钮位于输入框内部左下角（x 864 / bottom 818 < 输入框 bottom 822）；
+  图片选择/插入仍正常。`type-check` / `build-only` / `lint` 全绿。
+
 ### 2026-11-06 · 聊天图片改为输入框内嵌（微信式）
 
 - 图片不再进入待发送附件条：输入框换成 `contenteditable` 编辑器，选图/粘贴后

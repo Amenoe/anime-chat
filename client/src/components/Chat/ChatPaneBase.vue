@@ -109,29 +109,6 @@
     </div>
 
     <div class="chat-pane__input">
-      <div class="chat-pane__tools">
-        <el-tooltip content="发送图片（也可直接粘贴）" placement="top">
-          <el-button
-            class="chat-pane__tool"
-            :icon="Picture"
-            circle
-            text
-            :disabled="!connected || sending || recording || recordStarting"
-            @click="pickImage"
-          />
-        </el-tooltip>
-        <el-tooltip :content="recording ? '结束录音' : '录制语音'" placement="top">
-          <el-button
-            class="chat-pane__tool"
-            :class="{ 'is-recording': recording }"
-            :icon="Microphone"
-            circle
-            text
-            :disabled="!connected || sending || recordStarting"
-            @click="toggleRecording"
-          />
-        </el-tooltip>
-      </div>
       <div class="chat-pane__editor-wrap">
         <div
           ref="editorRef"
@@ -145,6 +122,29 @@
           @paste="onPaste"
           @click="onEditorClick"
         />
+        <div class="chat-pane__editor-tools">
+          <el-tooltip content="发送图片（也可直接粘贴）" placement="top">
+            <el-button
+              class="chat-pane__tool"
+              :icon="Picture"
+              circle
+              text
+              :disabled="!connected || sending || recording || recordStarting"
+              @click="pickImage"
+            />
+          </el-tooltip>
+          <el-tooltip :content="recording ? '结束录音' : '录制语音'" placement="top">
+            <el-button
+              class="chat-pane__tool"
+              :class="{ 'is-recording': recording }"
+              :icon="Microphone"
+              circle
+              text
+              :disabled="!connected || sending || recordStarting"
+              @click="toggleRecording"
+            />
+          </el-tooltip>
+        </div>
         <span class="chat-pane__count" :class="{ 'is-over': editorText.length > 500 }">
           {{ editorText.length }} / 500
         </span>
@@ -1013,10 +1013,12 @@ onBeforeUnmount(() => {
   }
 
   &__editor {
-    min-height: 56px;
+    box-sizing: border-box;
+    min-height: 64px;
     max-height: 140px;
     overflow-y: auto;
-    padding: 8px 12px 22px;
+    /* 底部留出内嵌按钮的位置（按钮绝对定位在左下角） */
+    padding: 8px 12px 30px;
     border-radius: 10px;
     background: var(--surface-overlay);
     box-shadow: 0 0 0 1px rgba(104, 198, 189, 0.22) inset;
@@ -1038,10 +1040,21 @@ onBeforeUnmount(() => {
     }
   }
 
+  /* 图片/语音按钮内嵌在输入框左下角 */
+  &__editor-tools {
+    position: absolute;
+    left: 8px;
+    bottom: 4px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+
   &__count {
     position: absolute;
     right: 10px;
-    bottom: 5px;
+    bottom: 7px;
     font-size: 11px;
     color: var(--font-unactive-color);
     pointer-events: none;
@@ -1051,19 +1064,15 @@ onBeforeUnmount(() => {
     }
   }
 
-  &__tools {
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    gap: 2px;
-    flex-shrink: 0;
-  }
-
   &__tool {
-    width: 30px;
-    height: 30px;
+    width: 24px;
+    height: 24px;
     padding: 0;
     color: var(--font-unactive-color);
+
+    :deep(.el-icon) {
+      font-size: 14px;
+    }
 
     &:hover:not(.is-disabled) {
       color: var(--primary-color);
@@ -1080,7 +1089,7 @@ onBeforeUnmount(() => {
   }
 
   &__send {
-    height: 56px;
+    height: 64px;
     padding: 0 16px;
     flex-shrink: 0;
   }
@@ -1381,7 +1390,7 @@ onBeforeUnmount(() => {
     }
 
     &__send {
-      height: 34px;
+      height: 64px;
       padding: 0 12px;
     }
   }
