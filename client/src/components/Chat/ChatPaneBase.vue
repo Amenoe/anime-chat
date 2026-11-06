@@ -67,22 +67,8 @@
     </div>
 
     <div v-if="pending.length" class="chat-pane__pending">
-      <div
-        v-for="item in pending"
-        :key="item.id"
-        class="pending-item"
-        :class="`pending-item--${item.kind}`"
-      >
-        <el-image
-          v-if="item.kind === 'image'"
-          :src="item.previewUrl"
-          :preview-src-list="[item.previewUrl]"
-          preview-teleported
-          fit="cover"
-          class="pending-item__thumb"
-        />
+      <div v-for="item in pending" :key="item.id" class="pending-item pending-item--audio">
         <button
-          v-else
           type="button"
           class="pending-item__voice"
           :class="{ 'is-playing': pendingAudioId === item.id }"
@@ -102,7 +88,7 @@
           ×
         </button>
       </div>
-      <span class="chat-pane__pending-hint">待发送 {{ pending.length }} 个</span>
+      <span class="chat-pane__pending-hint">待发送 {{ pending.length }} 条语音</span>
     </div>
 
     <div v-if="recording || recordStarting || sending" class="chat-pane__status">
@@ -146,18 +132,23 @@
           />
         </el-tooltip>
       </div>
-      <el-input
-        v-model="inputText"
-        type="textarea"
-        :rows="2"
-        resize="none"
-        maxlength="500"
-        show-word-limit
-        :placeholder="pending.length ? '可继续输入文字，点发送一并发出' : placeholder"
-        :disabled="!connected || recording"
-        @keydown="onInputKeydown"
-        @paste="onPaste"
-      />
+      <div class="chat-pane__editor-wrap">
+        <div
+          ref="editorRef"
+          class="chat-pane__editor"
+          contenteditable="true"
+          role="textbox"
+          aria-multiline="true"
+          :data-placeholder="editorPlaceholder"
+          @input="onEditorInput"
+          @keydown="onEditorKeydown"
+          @paste="onPaste"
+          @click="onEditorClick"
+        />
+        <span class="chat-pane__count" :class="{ 'is-over': editorText.length > 500 }">
+          {{ editorText.length }} / 500
+        </span>
+      </div>
       <el-button
         type="primary"
         class="chat-pane__send"
@@ -176,6 +167,13 @@
         @change="onImageChange"
       />
     </div>
+
+    <el-image-viewer
+      v-if="editorPreviewUrl"
+      :url-list="[editorPreviewUrl]"
+      teleported
+      @close="editorPreviewUrl = ''"
+    />
   </div>
 </template>
 
@@ -215,34 +213,37 @@ const emit = defineEmits<{
   'send-media': [message: string, type: 'image' | 'audio']
 }>()
 
-type PendingImage = {
-  id: string
-  kind: 'image'
-  blob: Blob
-  previewUrl: string
-}
-
 type PendingAudio = {
   id: string
-  kind: 'audio'
   blob: Blob
   previewUrl: string
   duration: number
 }
 
-type PendingAttachment = PendingImage | PendingAudio
+type EditorImage = {
+  blob: Blob
+  previewUrl: string
+}
 
 const MAX_IMAGES = 6
-const MAX_PENDING = 9
+const MAX_PENDING_AUDIO = 9
+const MAX_TEXT = 500
 
 const loginStore = useLoginStore()
 
-const inputText = ref('')
 const listRef = ref<HTMLElement | null>(null)
 const imageInput = ref<HTMLInputElement | null>(null)
+const editorRef = ref<HTMLDivElement | null>(null)
 
-/** 选完先进入待发送区：可以删除、试听，确认后点「发送」才真正上传 */
-const pending = ref<PendingAttachment[]>([])
+/** 输入框（contenteditable）里的纯文本，用于字数与发送按钮状态 */
+const editorText = ref('')
+const editorImageCount = ref(0)
+const editorPreviewUrl = ref('')
+/** 输入框内图片 id → 压缩后的文件；图片本身作为节点插在编辑器里 */
+const editorImages = new Map<string, EditorImage>()
+
+/** 语音仍用待发送条（图片按微信方式直接嵌在输入框内） */
+const pending = ref<PendingAudio[]>([])
 const sending = ref(false)
 
 const recording = ref(false)
@@ -266,13 +267,17 @@ let messageAudio: HTMLAudioElement | null = null
 const pendingAudioId = ref('')
 let pendingAudio: HTMLAudioElement | null = null
 
+const editorPlaceholder = computed(() =>
+  editorImageCount.value > 0 ? '继续输入文字，Enter 发送' : props.placeholder,
+)
+
 const canSend = computed(
   () =>
     props.connected &&
     !recording.value &&
     !recordStarting.value &&
     !sending.value &&
-    (inputText.value.trim().length > 0 || pending.value.length > 0),
+    (editorText.value.trim().length > 0 || editorImageCount.value > 0 || pending.value.length > 0),
 )
 
 const isSelf = (userId: string) => userId === loginStore.userInfo?.user_id
@@ -307,17 +312,117 @@ watch(
   () => primeAllVoiceDurations(),
 )
 
-function onInputKeydown(e: KeyboardEvent | Event) {
-  const ev = e as KeyboardEvent
-  if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
-    ev.preventDefault()
-    void doSend()
-  }
-}
-
-// ── 待发送附件 ────────────────────────────────────────────────
+// ── 输入框（contenteditable）：文本与图片混排 ─────────────────
 function makeId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
+}
+
+function readEditorText(): string {
+  const editor = editorRef.value
+  if (!editor) return ''
+  let out = ''
+  const walk = (node: Node) => {
+    if (node.nodeType === Node.TEXT_NODE) {
+      out += node.textContent || ''
+      return
+    }
+    if (!(node instanceof HTMLElement)) return
+    if (node.classList.contains('editor-image')) return
+    if (node.tagName === 'BR') {
+      out += '\n'
+      return
+    }
+    const block = node.tagName === 'DIV' || node.tagName === 'P'
+    if (block && out && !out.endsWith('\n')) out += '\n'
+    node.childNodes.forEach(walk)
+    if (block && !out.endsWith('\n')) out += '\n'
+  }
+  editor.childNodes.forEach(walk)
+  return out
+    .replace(/\u00a0/g, ' ')
+    .replace(/\n+$/, '')
+    .trim()
+}
+
+function syncEditorText() {
+  const editor = editorRef.value
+  if (!editor) {
+    editorText.value = ''
+    editorImageCount.value = 0
+    return
+  }
+  editorText.value = readEditorText()
+  // Backspace 直接删掉图片节点时，把 Map 里的 blob 也回收掉
+  const alive = new Set<string>()
+  editor.querySelectorAll<HTMLElement>('.editor-image').forEach((node) => {
+    const id = node.dataset.imageId || ''
+    if (id) alive.add(id)
+  })
+  for (const [id, item] of editorImages) {
+    if (!alive.has(id)) {
+      URL.revokeObjectURL(item.previewUrl)
+      editorImages.delete(id)
+    }
+  }
+  editorImageCount.value = alive.size
+}
+
+function insertEditorImage(id: string, previewUrl: string) {
+  const editor = editorRef.value
+  if (!editor) return
+
+  const wrap = document.createElement('span')
+  wrap.className = 'editor-image'
+  wrap.contentEditable = 'false'
+  wrap.dataset.imageId = id
+
+  const img = document.createElement('img')
+  img.src = previewUrl
+  img.alt = '聊天图片'
+
+  const remove = document.createElement('button')
+  remove.type = 'button'
+  remove.className = 'editor-image__remove'
+  remove.textContent = '×'
+  remove.addEventListener('mousedown', (event) => event.preventDefault())
+  remove.addEventListener('click', (event) => {
+    event.preventDefault()
+    event.stopPropagation()
+    removeEditorImage(id)
+  })
+
+  wrap.append(img, remove)
+
+  const selection = window.getSelection()
+  const inEditor = selection && selection.rangeCount > 0 && editor.contains(selection.anchorNode)
+  if (inEditor && selection) {
+    const range = selection.getRangeAt(0)
+    range.deleteContents()
+    range.insertNode(wrap)
+    const space = document.createTextNode('\u00a0')
+    wrap.after(space)
+    const after = document.createRange()
+    after.setStartAfter(space)
+    after.collapse(true)
+    selection.removeAllRanges()
+    selection.addRange(after)
+  } else {
+    editor.appendChild(wrap)
+    editor.appendChild(document.createTextNode('\u00a0'))
+  }
+
+  editor.focus()
+  syncEditorText()
+}
+
+function removeEditorImage(id: string) {
+  editorRef.value?.querySelector(`[data-image-id="${id}"]`)?.remove()
+  const item = editorImages.get(id)
+  if (item) {
+    URL.revokeObjectURL(item.previewUrl)
+    editorImages.delete(id)
+  }
+  syncEditorText()
 }
 
 async function addImageFile(file: File) {
@@ -325,23 +430,17 @@ async function addImageFile(file: File) {
     ElNotification({ type: 'warning', title: '只能发送图片文件' })
     return
   }
-  if (pending.value.filter((p) => p.kind === 'image').length >= MAX_IMAGES) {
+  if (editorImages.size >= MAX_IMAGES) {
     ElNotification({ type: 'warning', title: `一次最多添加 ${MAX_IMAGES} 张图片` })
-    return
-  }
-  if (pending.value.length >= MAX_PENDING) {
-    ElNotification({ type: 'warning', title: `待发送最多 ${MAX_PENDING} 个` })
     return
   }
   try {
     // 聊天图不需要原图：先缩到最长边 1280、再压到 400KB 以内
     const blob = await compressImage(file)
-    pending.value.push({
-      id: makeId('img'),
-      kind: 'image',
-      blob,
-      previewUrl: URL.createObjectURL(blob),
-    })
+    const previewUrl = URL.createObjectURL(blob)
+    const id = makeId('img')
+    editorImages.set(id, { blob, previewUrl })
+    insertEditorImage(id, previewUrl)
   } catch (err: any) {
     ElNotification({
       type: 'error',
@@ -351,15 +450,71 @@ async function addImageFile(file: File) {
   }
 }
 
-function removePending(id: string) {
-  const index = pending.value.findIndex((item) => item.id === id)
-  if (index < 0) return
-  const [item] = pending.value.splice(index, 1)
-  URL.revokeObjectURL(item.previewUrl)
-  if (item.kind === 'audio' && pendingAudioId.value === id) {
-    pendingAudio?.pause()
-    pendingAudio = null
-    pendingAudioId.value = ''
+function collectEditorImages(): Array<{ id: string; blob: Blob }> {
+  const editor = editorRef.value
+  if (!editor) return []
+  const result: Array<{ id: string; blob: Blob }> = []
+  editor.querySelectorAll<HTMLElement>('.editor-image').forEach((node) => {
+    const id = node.dataset.imageId || ''
+    const item = editorImages.get(id)
+    if (item) result.push({ id, blob: item.blob })
+  })
+  return result
+}
+
+function clearEditorText() {
+  const editor = editorRef.value
+  if (!editor) return
+  for (const node of Array.from(editor.childNodes)) {
+    if (node instanceof HTMLElement && node.classList.contains('editor-image')) continue
+    node.remove()
+  }
+  syncEditorText()
+}
+
+function onEditorInput() {
+  syncEditorText()
+}
+
+function onEditorKeydown(e: KeyboardEvent | Event) {
+  const ev = e as KeyboardEvent
+  if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
+    ev.preventDefault()
+    void doSend()
+  }
+}
+
+function onEditorClick(e: MouseEvent) {
+  const target = e.target as HTMLElement
+  if (target.closest('.editor-image__remove')) return
+  const img = target.closest('.editor-image img') as HTMLImageElement | null
+  if (img) editorPreviewUrl.value = img.src
+}
+
+/** 直接粘贴图片（截图工具、网页复制图）；粘贴纯文本时去掉外部富文本样式 */
+function onPaste(e: ClipboardEvent) {
+  const items = e.clipboardData?.items
+  if (!items?.length) return
+  const files: File[] = []
+  for (const item of Array.from(items)) {
+    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (file) files.push(file)
+  }
+  if (files.length) {
+    e.preventDefault()
+    void (async () => {
+      for (const file of files) {
+        await addImageFile(file)
+      }
+    })()
+    return
+  }
+  const text = e.clipboardData?.getData('text/plain')
+  if (text) {
+    e.preventDefault()
+    document.execCommand('insertText', false, text)
+    syncEditorText()
   }
 }
 
@@ -376,25 +531,6 @@ async function onImageChange(e: Event) {
   for (const file of files) {
     await addImageFile(file)
   }
-}
-
-/** 直接粘贴图片（截图工具、网页复制图） */
-function onPaste(e: ClipboardEvent) {
-  const items = e.clipboardData?.items
-  if (!items?.length) return
-  const files: File[] = []
-  for (const item of Array.from(items)) {
-    if (item.kind !== 'file' || !item.type.startsWith('image/')) continue
-    const file = item.getAsFile()
-    if (file) files.push(file)
-  }
-  if (!files.length) return
-  e.preventDefault()
-  void (async () => {
-    for (const file of files) {
-      await addImageFile(file)
-    }
-  })()
 }
 
 // ── 录音 ─────────────────────────────────────────────────────
@@ -496,9 +632,12 @@ function finishRecording() {
 
   const blob = new Blob(chunks, { type: recorded.mimeType || 'audio/webm' })
   if (!blob.size) return
+  if (pending.value.length >= MAX_PENDING_AUDIO) {
+    ElNotification({ type: 'warning', title: `待发送语音最多 ${MAX_PENDING_AUDIO} 条` })
+    return
+  }
   pending.value.push({
     id: makeId('voice'),
-    kind: 'audio',
     blob,
     previewUrl: URL.createObjectURL(blob),
     duration: Math.max(1, recordedSeconds.value),
@@ -508,6 +647,18 @@ function finishRecording() {
 // ── 待发送语音试听 ───────────────────────────────────────────
 function pendingDurationLabel(item: PendingAudio) {
   return `${Math.max(1, Math.round(item.duration))}"`
+}
+
+function removePending(id: string) {
+  const index = pending.value.findIndex((item) => item.id === id)
+  if (index < 0) return
+  const [item] = pending.value.splice(index, 1)
+  URL.revokeObjectURL(item.previewUrl)
+  if (pendingAudioId.value === id) {
+    pendingAudio?.pause()
+    pendingAudio = null
+    pendingAudioId.value = ''
+  }
 }
 
 function togglePendingAudio(item: PendingAudio) {
@@ -552,45 +703,51 @@ async function doSend() {
     ElNotification({ type: 'warning', title: '聊天服务未连接' })
     return
   }
-  const text = inputText.value.trim()
-  if (!text && !pending.value.length) return
+  const text = editorText.value.trim()
+  const images = collectEditorImages()
+  const audios = [...pending.value]
+  if (!text && !images.length && !audios.length) return
 
   if (text) {
-    emit('send', text)
-    inputText.value = ''
-  }
-  if (!pending.value.length) {
-    scrollToBottom(true)
-    return
+    emit('send', text.slice(0, MAX_TEXT))
+    clearEditorText()
   }
 
-  const items = [...pending.value]
-  sending.value = true
-  let failed = 0
-  try {
-    for (const item of items) {
-      try {
-        const filename =
-          item.kind === 'image' ? 'chat-image.jpg' : `chat-voice.${audioExtOf(item.blob.type)}`
-        const res = await uploadChatMedia(item.blob, filename)
-        // 自己发的语音直接用录制时长，列表里不必等 metadata 加载再显示
-        if (item.kind === 'audio') voiceDurations[res.url] = item.duration
-        emit('send-media', res.url, item.kind)
-        removePending(item.id)
-      } catch {
-        failed += 1
+  if (images.length || audios.length) {
+    sending.value = true
+    let failed = 0
+    try {
+      for (const image of images) {
+        try {
+          const res = await uploadChatMedia(image.blob, 'chat-image.jpg')
+          emit('send-media', res.url, 'image')
+          removeEditorImage(image.id)
+        } catch {
+          failed += 1
+        }
       }
+      for (const audio of audios) {
+        try {
+          const res = await uploadChatMedia(audio.blob, `chat-voice.${audioExtOf(audio.blob.type)}`)
+          // 自己发的语音直接用录制时长，列表里不必等 metadata 加载再显示
+          voiceDurations[res.url] = audio.duration
+          emit('send-media', res.url, 'audio')
+          removePending(audio.id)
+        } catch {
+          failed += 1
+        }
+      }
+      scrollToBottom(true)
+    } finally {
+      sending.value = false
     }
-    scrollToBottom(true)
-  } finally {
-    sending.value = false
-  }
-  if (failed) {
-    ElNotification({
-      type: 'error',
-      title: '部分附件发送失败',
-      message: `${failed} 个附件未发出，已保留在待发送区`,
-    })
+    if (failed) {
+      ElNotification({
+        type: 'error',
+        title: '部分附件发送失败',
+        message: `${failed} 个附件未发出，仍保留在输入区`,
+      })
+    }
   }
 }
 
@@ -675,6 +832,8 @@ onBeforeUnmount(() => {
   pendingAudio?.pause()
   for (const item of pending.value) URL.revokeObjectURL(item.previewUrl)
   pending.value = []
+  for (const item of editorImages.values()) URL.revokeObjectURL(item.previewUrl)
+  editorImages.clear()
 })
 </script>
 
@@ -844,16 +1003,51 @@ onBeforeUnmount(() => {
     gap: 8px;
     padding: 10px 16px 14px;
     border-top: 1px solid rgba(104, 198, 189, 0.12);
+  }
 
-    :deep(.el-textarea) {
-      flex: 1;
+  /* 输入框：contenteditable，图片直接嵌在文本里（微信式） */
+  &__editor-wrap {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+  }
+
+  &__editor {
+    min-height: 56px;
+    max-height: 140px;
+    overflow-y: auto;
+    padding: 8px 12px 22px;
+    border-radius: 10px;
+    background: var(--surface-overlay);
+    box-shadow: 0 0 0 1px rgba(104, 198, 189, 0.22) inset;
+    color: var(--font-color);
+    font-size: 14px;
+    line-height: 1.5;
+    outline: none;
+    word-break: break-word;
+    white-space: pre-wrap;
+
+    &:empty::before {
+      content: attr(data-placeholder);
+      color: var(--font-unactive-color);
+      pointer-events: none;
     }
 
-    :deep(.el-textarea__inner) {
-      min-height: 56px !important;
-      background: var(--surface-overlay);
-      box-shadow: 0 0 0 1px rgba(104, 198, 189, 0.22) inset;
-      color: var(--font-color);
+    &:focus {
+      box-shadow: 0 0 0 1px var(--primary-color) inset;
+    }
+  }
+
+  &__count {
+    position: absolute;
+    right: 10px;
+    bottom: 5px;
+    font-size: 11px;
+    color: var(--font-unactive-color);
+    pointer-events: none;
+
+    &.is-over {
+      color: var(--warning-color);
     }
   }
 
@@ -892,27 +1086,46 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 待发送缩略图 / 语音条 */
+/* 输入框里的图片块：节点由 createElement 插入，没有 scoped 的 data-v，
+   必须用 :deep() 才能命中（否则图片按原始尺寸铺满输入框） */
+.chat-pane :deep(.editor-image) {
+  position: relative;
+  display: inline-block;
+  vertical-align: bottom;
+  margin: 2px 4px 2px 0;
+  line-height: 0;
+
+  img {
+    display: block;
+    width: 64px;
+    height: 64px;
+    border-radius: 6px;
+    object-fit: cover;
+    cursor: zoom-in;
+  }
+}
+
+.chat-pane :deep(.editor-image__remove) {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border-radius: 50%;
+  border: 2px solid var(--aside-bg-color);
+  background: var(--warning-color);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+}
+
+/* 待发送语音条 */
 .pending-item {
   position: relative;
   flex-shrink: 0;
-
-  &__thumb {
-    display: block;
-    width: 56px;
-    height: 56px;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 1px solid rgba(104, 198, 189, 0.25);
-    cursor: zoom-in;
-
-    :deep(.el-image__inner) {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      display: block;
-    }
-  }
 
   &__voice {
     display: flex;
