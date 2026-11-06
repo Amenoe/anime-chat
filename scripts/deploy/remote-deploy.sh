@@ -124,6 +124,16 @@ if ! swap_dist "$STAGE/server/dist" "$APP_DIR/server/dist"; then
   die "后端产物切换失败"
 fi
 
+# ---------- 3.5 聊天媒体持久目录 ----------
+# 图片/语音写在 server/uploads（不在 dist 里，切换产物不会丢）。
+# 首次部署需要创建，并交给服务运行用户，否则 anime 用户无写权限、上传会 500。
+SVC_USER=$(systemctl show "$SERVICE" -p User --value 2>/dev/null || true)
+[ -n "$SVC_USER" ] || SVC_USER=root
+mkdir -p "$APP_DIR/server/uploads/chat"
+chown -R "$SVC_USER:$SVC_USER" "$APP_DIR/server/uploads" 2>/dev/null ||
+  warn "聊天上传目录 chown 失败（服务用户：$SVC_USER）"
+chmod -R u+rwX "$APP_DIR/server/uploads" 2>/dev/null || true
+
 # ---------- 4. 重启与健康检查 ----------
 wait_healthy() {
   local start=$SECONDS code

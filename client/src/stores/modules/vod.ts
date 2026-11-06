@@ -269,7 +269,7 @@ export const useVodStore = defineStore('vod', () => {
     return room
   }
 
-  function sendMessage(text: string) {
+  function sendMessage(text: string, type: 'text' | 'image' | 'audio' = 'text') {
     const content = text.trim()
     if (!content) return false
     if (!socket?.connected) {
@@ -291,7 +291,7 @@ export const useVodStore = defineStore('vod', () => {
       group_id: group.value.group_id,
       user_id: user.user_id,
       message: content,
-      message_type: 'text',
+      message_type: type,
       time: Date.now(),
       nickname: user.nickname || user.username || '我',
       avatar: user.avatar,
@@ -301,7 +301,7 @@ export const useVodStore = defineStore('vod', () => {
       group_id: group.value.group_id,
       user_id: user.user_id,
       message: content,
-      message_type: 'text',
+      message_type: type,
     })
     return true
   }

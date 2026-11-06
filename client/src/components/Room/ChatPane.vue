@@ -5,6 +5,7 @@
     :connected="connected"
     empty-text="还没有消息，来说点什么吧"
     @send="onSend"
+    @send-media="onSendMedia"
   >
     <template #header-extra>
       <el-button size="small" text @click="copyRoomLink">复制链接</el-button>
@@ -32,6 +33,14 @@ function onSend(text: string) {
     return
   }
   roomStore.sendMessage(text)
+}
+
+function onSendMedia(message: string, type: 'image' | 'audio') {
+  if (!connected.value) {
+    ElNotification({ type: 'warning', title: '未连接放映室' })
+    return
+  }
+  roomStore.sendMessage(message, type)
 }
 
 async function copyRoomLink() {

@@ -23,8 +23,12 @@ import {
   JoinRoomDto,
   PlaybackControlDto,
 } from './dto/chat.dto';
+import { CHAT_MEDIA_URL_RE } from './chat-media.service';
 
 const HISTORY_LIMIT = 50;
+/** 文本消息上限（前端 maxlength 500，后端再挡一层） */
+const MAX_TEXT_LENGTH = 500;
+const MESSAGE_TYPES = new Set(['text', 'image', 'audio']);
 
 type SocketMeta = {
   userId: string | null;
@@ -211,10 +215,35 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // 兼容 body 被包一层 / 多参数等情况
       const payload = this.normalizeMessageBody(data);
       const text = payload?.message?.trim();
+      const messageType = payload?.message_type || 'text';
       if (!payload?.group_id || !text) {
         client.emit('groupMessage', {
           code: 400,
           message: '消息内容不完整',
+          data: null,
+        });
+        return;
+      }
+      if (!MESSAGE_TYPES.has(messageType)) {
+        client.emit('groupMessage', {
+          code: 400,
+          message: '不支持的消息类型',
+          data: null,
+        });
+        return;
+      }
+      if (messageType === 'text' && text.length > MAX_TEXT_LENGTH) {
+        client.emit('groupMessage', {
+          code: 400,
+          message: `消息最多 ${MAX_TEXT_LENGTH} 个字符`,
+          data: null,
+        });
+        return;
+      }
+      if (messageType !== 'text' && !CHAT_MEDIA_URL_RE.test(text)) {
+        client.emit('groupMessage', {
+          code: 400,
+          message: '图片/语音消息地址无效',
           data: null,
         });
         return;
@@ -264,7 +293,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         group_id: roomId,
         user_id: user.user_id,
         message: text,
-        message_type: payload.message_type || 'text',
+        message_type: messageType,
         // bigint 列用字符串写入更稳
         time: now as any,
       });

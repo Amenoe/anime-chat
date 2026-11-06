@@ -153,6 +153,33 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ## 4. 修复记录
 
+### 2026-11-06 · 聊天室支持图片与语音消息
+
+- **后端**（`server/src/chat/`）：
+  - 新增 `ChatMediaController` / `ChatMediaService`：
+    `POST /api/chat/media`（JWT，multipart，≤10MB）落盘到 `server/uploads/chat`，
+    文件名 `uuid.ext`，返回 `/api/chat/media/<uuid>.<ext>`；
+    `GET /api/chat/media/:filename` 公开只读（img/audio 带不了 JWT），
+    按扩展名回 Content-Type，长缓存。
+  - 未用 MinIO：本机 `8.130.120.172:19000` 当前不可达，聊天媒体改本地磁盘；
+    目录用 `__dirname/../../uploads` 计算，不依赖 systemd 的 WorkingDirectory。
+  - `chat.gateway` 的 `groupMessage` 增加类型白名单（`text|image|audio`）、
+    文本 500 字上限、媒体地址必须匹配 `/api/chat/media/<uuid>.<ext>`。
+- **前端**：
+  - `ChatPaneBase` 输入区加图片/语音按钮：图片经 canvas 压缩（最长边 1280、
+    目标 ≤400KB、统一 JPEG）后上传；语音用 `MediaRecorder` 录制（最长 60s）后上传。
+  - 消息渲染：`image` 用 `el-image`（点击预览放大、`preview-teleported`），
+    `audio` 用原生 `<audio controls>`；图片气泡最大 220×280。
+  - `room` / `vod` store 的 `sendMessage(text, type='text')` 透传消息类型；
+    两个父面板统一处理 `send-media`。
+  - 语音依赖安全上下文；http 非 localhost 会提示「当前环境不支持录音」。
+- **验证**：
+  - 接口：图片/语音上传→读取 sha256 一致、Content-Type 正确；`text/plain` 上传 400。
+  - socket：图片消息广播成功；`video` 类型、伪造外链、501 字文本均被 400 拒绝。
+  - 浏览器（headless Chrome + fake 麦克风）：2400×1600 图片压缩为 1280×853、
+    气泡显示 220×147、点击打开预览；录音 1.5s → 音频消息 1.56s；移动端截图正常。
+  - `pnpm type-check` / `build-only` / `lint`、后端 `tsc` / `build` / prettier 全绿。
+
 ### 2026-11-06 · 番剧助手按压动画：底部固定压扁 + 无过冲回弹
 
 - 按下：以底边为原点 `scale(1.07, 0.88)` —— 宽度向两侧撑开、高度压扁，**底部 y 不变**。

@@ -6,6 +6,7 @@
     empty-text="还没有人说话，打个招呼吧"
     placeholder="聊天室消息，Enter 发送"
     @send="onSend"
+    @send-media="onSendMedia"
   >
     <template #header-extra>
       <span class="vod-chat__tag">点播室</span>
@@ -26,6 +27,10 @@ const onlineUsers = computed(() => vodStore.onlineUsers)
 
 function onSend(text: string) {
   vodStore.sendMessage(text)
+}
+
+function onSendMedia(message: string, type: 'image' | 'audio') {
+  vodStore.sendMessage(message, type)
 }
 </script>
 

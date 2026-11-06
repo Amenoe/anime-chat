@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
+import { ChatMediaController } from './chat-media.controller';
+import { ChatMediaService } from './chat-media.service';
 import { User } from 'src/user/entities/user.entity';
 import { Group } from 'src/group/entities/group.entity';
 import { GroupUserMap } from 'src/group/entities/group_user_map.entity';
@@ -14,6 +16,7 @@ import { RoomModule } from 'src/room/room.module';
     TypeOrmModule.forFeature([User, Anime, Group, GroupUserMap, GroupMessage]),
     RoomModule,
   ],
-  providers: [ChatGateway, ChatService],
+  controllers: [ChatMediaController],
+  providers: [ChatGateway, ChatService, ChatMediaService],
 })
 export class ChatModule {}
