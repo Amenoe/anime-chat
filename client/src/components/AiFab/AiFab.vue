@@ -312,19 +312,22 @@ function openLogin() {
   touch-action: manipulation;
   translate: 0 0;
   scale: 1;
+  // 纵向缩放一律以底边为原点：按下压扁与回弹都保持底部不动
+  transform-origin: bottom;
   filter: drop-shadow(0 8px 14px rgb(0 0 0 / 35%));
   transition: translate 0.22s ease, scale 0.22s ease, filter 0.22s ease;
 
-  &:hover {
-    translate: 0 -5px;
-    scale: 1.04;
-    filter: drop-shadow(0 16px 24px rgb(104 198 189 / 45%));
-  }
+  // &:hover {
+  //   translate: 0 -5px;
+  //   scale: 1.04;
+  //   filter: drop-shadow(0 16px 24px rgb(104 198 189 / 45%));
+  // }
 
-  // 按下即时缩小（松开后由 --pop 做过冲回弹）
+  // 按下即时变形（松开后由 --pop 回弹）：
+  // 以底边为原点，高度压扁、宽度向两侧撑开，底部位置不动
   &:active {
-    scale: 0.9;
-    transition: scale 0.08s ease;
+    transform: scale(1.07, 0.88);
+    transition: transform 0.08s ease-out;
   }
 
   &__img {
@@ -342,29 +345,25 @@ function openLogin() {
 }
 
 /*
- * 弹性回弹：按下 → 过冲 → 回落。
- * 关键帧比单纯 transition 更像「果冻」，配合带过冲的 cubic-bezier 再补一层惯性。
+ * 回弹：从按压后的「扁、宽」回到原大小。
+ *
+ * 明确只回到 1，不做「先放大再缩小」的过冲 —— 用户要的是弹性落定，
+ * 不是果冻过冲。弹性感来自曲线的前快后慢，以及宽度先回正、高度稍后跟上。
  */
 @keyframes fab-pop {
   0% {
-    transform: scale(1);
+    transform: scale(1.07, 0.88);
   }
-  28% {
-    transform: scale(0.86);
-  }
-  60% {
-    transform: scale(1.1);
-  }
-  82% {
-    transform: scale(0.96);
+  55% {
+    transform: scale(1, 0.97);
   }
   100% {
-    transform: scale(1);
+    transform: scale(1, 1);
   }
 }
 
 .ai-fab--pop {
-  animation: fab-pop 0.46s cubic-bezier(0.34, 1.56, 0.64, 1);
+  animation: fab-pop 0.46s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /*
