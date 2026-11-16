@@ -381,14 +381,31 @@ export class SourceSearchService {
       return [];
     }
 
+    /*
+     * 站点搜索是模糊匹配，长中文标题哪怕只搜到前缀，也会带回一堆同前缀番剧
+     * （《你好，我是受心上人所托来做恋爱药的魔女。》→《你好世界》《祝你好运》）。
+     * 这里按「站点条目名 vs 目标标题」做相关性过滤；配置了 filterBySubjectName:false
+     * 的站点保持原行为。
+     */
+    const filtered =
+      sc.filterBySubjectName === false
+        ? subjects
+        : subjects.filter((subject) =>
+            this.isSubjectNameMatch(subject.name, keyword),
+          );
+    if (!filtered.length) {
+      this.logger.debug(`web subject filtered: ${entry.name} q=${q}`);
+      return [];
+    }
+
     // 按名称匹配度选最佳条目（Animeko 有 filter；我们简化为打分）
-    subjects.sort(
+    filtered.sort(
       (a, b) =>
         this.titleKeywordScore(b.name, keyword) -
         this.titleKeywordScore(a.name, keyword),
     );
     // 只尝试前 2 个条目，避免超时
-    const trySubjects = subjects.slice(0, 2);
+    const trySubjects = filtered.slice(0, 2);
 
     const out: PlayCandidate[] = [];
 
@@ -520,7 +537,10 @@ export class SourceSearchService {
   }
 
   private buildSearchKeyword(keyword: string, sc: Record<string, any>) {
-    let q = (keyword || '').trim();
+    const raw = (keyword || '').trim();
+    // 原始标题是否自带空白：决定 searchUseOnlyFirstWord 能不能用（见下）
+    const hadWhitespace = /\s/.test(raw);
+    let q = raw;
     // Animeko: searchRemoveSpecial 删剧场版等标记，保留空格供 firstWord
     if (sc.searchRemoveSpecial !== false) {
       q = q
@@ -529,11 +549,23 @@ export class SourceSearchService {
         .replace(/\s+/g, ' ')
         .trim();
     }
-    if (sc.searchUseOnlyFirstWord !== false) {
+    /*
+     * searchUseOnlyFirstWord 是为「日文标题 + 空格副标题」设计的。
+     * 中文标题本身没有空格，但标点清洗后会凭空多出空格：
+     * 《你好，我是受心上人所托来做恋爱药的魔女。》→「你好 我是…」→ 取第一个词得到
+     * 「你好」，于是搜出来全是《你好世界》《祝你好运》这类同前缀番剧。
+     * 所以只在原始标题本来就有空白、且首词不是短中文时才截断。
+     */
+    if (sc.searchUseOnlyFirstWord !== false && hadWhitespace) {
       const first = q.split(/\s+/)[0];
-      if (first) q = first;
+      const shortCjk = /^[\u4e00-\u9fff]{1,5}$/.test(first || '');
+      if (first && first.length >= 2 && !shortCjk) q = first;
     }
-    return q || keyword.trim();
+    // 中文长标题：把标点清洗留下的空格合并回整串，按完整标题搜索
+    if (!hadWhitespace && /[\u4e00-\u9fff]/.test(q)) {
+      q = q.replace(/\s+/g, '');
+    }
+    return q || raw;
   }
 
   private buildVideoHeaders(sc: Record<string, any>, pageUrl: string) {
@@ -1085,6 +1117,38 @@ export class SourceSearchService {
     } catch {
       return href;
     }
+  }
+
+  /** 站点条目名与目标标题是否足够相似（去标点、大小写后比较） */
+  private isSubjectNameMatch(subjectName: string, keyword: string): boolean {
+    const norm = (value: string) =>
+      (value || '').toLowerCase().replace(/[^\w\u4e00-\u9fff]/g, '');
+    const a = norm(subjectName);
+    const b = norm(keyword);
+    // 名称没抓到时不拦，保持站点原有行为
+    if (!a || !b) return true;
+    if (a === b || a.includes(b) || b.includes(a)) return true;
+    const common = this.longestCommonSubstringLength(a, b);
+    // 至少 4 个连续字，且达到较短一方的一半，才算同一部；
+    // 「再见龙生，你好人生」与「你好，我是受心上人…」只共有「你好」→ 过滤
+    return common >= Math.max(4, Math.min(a.length, b.length) * 0.5);
+  }
+
+  private longestCommonSubstringLength(a: string, b: string): number {
+    if (!a || !b) return 0;
+    let best = 0;
+    let prev = new Array(b.length + 1).fill(0) as number[];
+    for (let i = 1; i <= a.length; i++) {
+      const cur = new Array(b.length + 1).fill(0) as number[];
+      for (let j = 1; j <= b.length; j++) {
+        if (a[i - 1] === b[j - 1]) {
+          cur[j] = prev[j - 1] + 1;
+          if (cur[j] > best) best = cur[j];
+        }
+      }
+      prev = cur;
+    }
+    return best;
   }
 
   private titleKeywordScore(title: string, keyword: string) {
