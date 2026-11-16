@@ -153,6 +153,32 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ## 4. 修复记录
 
+### 2026-11-16 · 放映室同步点播室的磁力播放（下载进度 + HLS 总时长）
+
+**现象**：放映室播放磁力资源时没有下载进度；mkv/HEVC 的时长只有几秒（截图 00:01 / 00:04），
+和点播室早先修过的问题一样。
+
+**根因**：`PlayerPane` 只信 `playbackState.stream_url`，缺失时回退
+`buildPlaybackStreamUrl`（fMP4，没有真实时长）；没有会话轮询，拿不到
+`remuxRequired`、`progress`、`downloadedBytes`。
+
+**修复**（`client/src/components/Room/PlayerPane.vue`，与 `VodPlayer` 同一套逻辑）：
+
+- 每 2.5s `getPlaybackSession` 轮询：`remuxRequired` → `buildHlsPlaylistUrl`（HLS 分片，
+  真实总时长可拖动），否则 Range 流。
+- 只有出现 `fileName` 才挂 `AnimePlayer`；metadata 未到时显示「正在获取种子信息…」。
+- 状态区显示会话状态（获取种子信息 / 下载中 / 可播放 / 已完成）、进度百分比、
+  已下载 / 总字节、文件名，并显示 `el-progress` 进度条。
+- `AnimePlayer` 开 `auto-retry`（边下边播 503 时自动重试）。
+- 会话接口失败时回退到房主广播的 `stream_url`，至少不黑屏。
+
+**验证**：
+
+- 观众视角 + m3u8 VOD 会话：播放器挂载，`video.duration = 635s`（真实总时长）。
+- 磁力（Big Buck Bunny）：状态从「可播放 0% 50.9KB/263.5MB」→「4% 9.3MB」→「12% 31MB」，
+  进度条与字节数实时更新；缓冲不足时 `auto-retry` 正常重试；无控制台错误。
+- `pnpm type-check` / `build-only` / `lint` 通过。
+
 ### 2026-11-16 · 搜源把中文长标题截成前缀（「你好…」搜成其他番剧）
 
 **现象**：《你好，我是受心上人所托来做恋爱药的魔女。》搜源时，多个流媒体源返回

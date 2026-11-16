@@ -1,19 +1,22 @@
 <template>
   <div class="player-pane">
     <AnimePlayer
+      v-if="playUrl"
       ref="playerRef"
-      :url="streamUrl"
+      :url="playUrl"
       :title="playbackTitle"
       :controlled="!isHost"
       :paused="playbackState?.paused"
       :danmaku="danmakuItems"
       :subtitles="subtitles"
+      auto-retry
       @timeupdate="onTimeUpdate"
       @play="onPlay"
       @pause="onPause"
       @seek="onSeek"
       @error="onPlayerError"
     />
+    <div v-else class="player-pane__placeholder">{{ placeholderText }}</div>
 
     <div class="player-pane__info">
       <div class="player-pane__meta">
@@ -48,6 +51,24 @@
         </span>
         <span v-if="currentQuality" class="player-pane__quality">{{ currentQuality }}</span>
       </div>
+      <div v-if="session" class="player-pane__status-line">
+        <span class="player-pane__tag">{{ statusLabel }}</span>
+        <span v-if="session.remuxRequired" class="player-pane__tag">转封装</span>
+        <span v-if="!isStreamSession" class="player-pane__meta-text">{{ progressText }}</span>
+        <span v-if="session.fileName" class="player-pane__file" :title="session.fileName">
+          {{ session.fileName }}
+        </span>
+        <span v-if="session.errorMessage" class="player-pane__err">
+          {{ session.errorMessage }}
+        </span>
+      </div>
+      <el-progress
+        v-if="session && !isStreamSession && progressPercent < 100"
+        class="player-pane__progress"
+        :percentage="progressPercent"
+        :stroke-width="6"
+        :show-text="false"
+      />
       <div v-if="sourceStatusText" class="player-pane__status-line">
         <span class="player-pane__status-text">{{ sourceStatusText }}</span>
       </div>
@@ -73,10 +94,13 @@
 import { useRoomStore } from '@/stores/modules/room'
 import { useHomeStore } from '@/stores/modules/home'
 import {
+  buildHlsPlaylistUrl,
   buildPlaybackStreamUrl,
   buildSubtitleUrl,
+  getPlaybackSession,
   getSessionSubtitles,
   type PlayCandidate,
+  type PlaybackSessionView,
 } from '@/api/playback'
 import { extractQuality } from '@/utils/source-quality'
 import { addPlayHistory } from '@/utils/play-history'
@@ -188,13 +212,123 @@ const currentQuality = computed(() => {
   return extractQuality(sourceSearch.currentSourceLabel.value, playbackState.value?.title || '')
 })
 
-const streamUrl = computed(() => {
-  const ps = playbackState.value
-  if (!ps) return null
-  if (ps.stream_url) return ps.stream_url
-  if (ps.session_id) return buildPlaybackStreamUrl(ps.session_id)
-  return null
+/**
+ * 播放会话轮询（与点播室同一套磁力播放体验）：
+ * - mkv/HEVC 用 HLS 分片，播放器能拿到真实总时长；
+ * - 轮询 `progress / downloadedBytes / sizeBytes` 显示下载进度；
+ * - 只有出现 fileName 才挂播放器，避免 metadata 还没解析时黑屏。
+ */
+const session = ref<PlaybackSessionView | null>(null)
+const playUrl = ref<string | null>(null)
+const waitingMeta = ref(false)
+let pollTimer: ReturnType<typeof setInterval> | null = null
+let pollSessionId = ''
+
+const activeSessionId = computed(() => playbackState.value?.session_id || '')
+const isStreamSession = computed(() => session.value?.playMode !== 'progressive')
+const progressPercent = computed(() =>
+  Math.min(100, Math.round((session.value?.progress ?? 0) * 100)),
+)
+
+const statusLabel = computed(() => {
+  const map: Record<string, string> = {
+    created: '已创建',
+    fetching: '获取种子信息',
+    downloading: '下载中',
+    playable: '可播放',
+    ready: '已完成',
+    failed: '失败',
+  }
+  return map[session.value?.status || ''] || session.value?.status || '-'
 })
+
+const progressText = computed(() => {
+  const s = session.value
+  if (!s) return ''
+  const dl = formatBytes(s.downloadedBytes)
+  const total = formatBytes(s.sizeBytes)
+  return `${progressPercent.value}% · ${dl}${total ? ' / ' + total : ''}`
+})
+
+const placeholderText = computed(() => {
+  if (session.value?.errorMessage) return session.value.errorMessage
+  if (waitingMeta.value) return '正在获取种子信息…'
+  if (!activeSessionId.value) return isHost.value ? '选源后开始播放' : '等待房主选源…'
+  return isHost.value ? '正在准备播放…' : '等待房主开播…'
+})
+
+function formatBytes(n: number) {
+  if (!n) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  let i = 0
+  let v = n
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(i ? 1 : 0)} ${units[i]}`
+}
+
+/** mkv/HEVC 走 HLS 分片（真实时长 + 可拖动）；其它走原生 Range 流 */
+function urlFor(s: PlaybackSessionView) {
+  return s.remuxRequired
+    ? buildHlsPlaylistUrl(s.id)
+    : buildPlaybackStreamUrl(s.id, { hls: s.playMode === 'hls' })
+}
+
+function stopPoll() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+async function refreshSession(): Promise<string | null> {
+  const id = pollSessionId || activeSessionId.value
+  if (!id) return null
+  try {
+    const s = await getPlaybackSession(id)
+    if (activeSessionId.value && activeSessionId.value !== id) return null
+    session.value = s
+    if (s.fileName && s.status !== 'failed') {
+      waitingMeta.value = false
+      const url = urlFor(s)
+      if (playUrl.value !== url) playUrl.value = url
+    }
+    if (s.status === 'failed' || s.status === 'ready') stopPoll()
+    return s.status
+  } catch {
+    // 会话接口偶发失败时回退到房主广播的地址，至少别黑屏
+    if (!playUrl.value && playbackState.value?.stream_url) {
+      playUrl.value = playbackState.value.stream_url
+    }
+    return null
+  }
+}
+
+function startPoll(id?: string) {
+  stopPoll()
+  if (id) pollSessionId = id
+  pollTimer = setInterval(refreshSession, 2500)
+}
+
+watch(
+  activeSessionId,
+  async (id) => {
+    if (id && session.value?.id === id && playUrl.value) return
+    stopPoll()
+    pollSessionId = id || ''
+    session.value = null
+    playUrl.value = null
+    waitingMeta.value = !!id
+    if (!id) return
+    const status = await refreshSession()
+    if (!status || (status !== 'ready' && status !== 'failed')) {
+      startPoll(id)
+    }
+  },
+  { immediate: true },
+)
 
 // ── 播放器控制与同步 ─────────────────────────────────────────
 
@@ -269,6 +403,7 @@ function onDrawerClosed() {
 }
 
 onBeforeUnmount(() => {
+  stopPoll()
   sourceSearch.teardown()
 })
 </script>
@@ -406,6 +541,56 @@ onBeforeUnmount(() => {
 
   &__status-text {
     color: var(--primary-color);
+  }
+
+  &__placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    aspect-ratio: 16 / 9;
+    min-height: 220px;
+    border-radius: 10px;
+    background: #000;
+    color: var(--font-unactive-color);
+    font-size: 13px;
+  }
+
+  &__tag {
+    flex-shrink: 0;
+    padding: 1px 8px;
+    border-radius: 6px;
+    font-size: 11px;
+    color: var(--primary-color);
+    background: rgba(104, 198, 189, 0.1);
+    border: 1px solid rgba(104, 198, 189, 0.28);
+  }
+
+  &__meta-text {
+    color: var(--font-unactive-color);
+  }
+
+  &__file {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--font-unactive-color);
+  }
+
+  &__err {
+    color: var(--warning-color);
+  }
+
+  &__progress {
+    margin-top: 2px;
+
+    :deep(.el-progress-bar__outer) {
+      background: rgba(104, 198, 189, 0.12);
+    }
+
+    :deep(.el-progress-bar__inner) {
+      background: var(--primary-color);
+    }
   }
 }
 
