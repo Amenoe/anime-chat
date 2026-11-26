@@ -16,7 +16,19 @@ defineProps({
 </script>
 
 <style scoped>
+.iconfont {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
 .iconfont i {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 16px;
   height: 16px;
   margin-right: 16px;

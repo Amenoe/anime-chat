@@ -153,6 +153,17 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ## 4. 修复记录
 
+### 2026-11-26 · 标签与侧边栏图标垂直对齐
+
+- **详情页标签中英文/数字偏上**：`.tag-row` 加 `align-items: center`；
+  `.anime-tag` 改为 `inline-flex` + `align-items: center` + 固定 `height: 24px` + `line-height: 1`。
+  所有标签同高，中文 / `TV` / `2011年4月` 的文本都在容器垂直中心，不再上浮。
+- **侧边栏图标偏上**：`Icon.vue` 的 `.iconfont` 改为 `inline-flex` 居中、固定 16px 高，
+  内部 `el-icon` 16×16 居中；链接容器本身已是 `display:flex; align-items:center`。
+- 验证：侧边栏每行 icon / text 的垂直中心完全一致（差值 0）；
+  详情页标签统一 26px 高（含边框）、`line-height: 12px`、flex center，截图确认混排文本居中。
+  `type-check` / `build-only` / `lint` 全绿。
+
 ### 2026-11-16 · 放映室同步点播室的磁力播放（下载进度 + HLS 总时长）
 
 **现象**：放映室播放磁力资源时没有下载进度；mkv/HEVC 的时长只有几秒（截图 00:01 / 00:04），

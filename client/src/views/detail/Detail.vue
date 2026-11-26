@@ -488,14 +488,20 @@ async function onCollectCommand(cmd: string) {
 .tag-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
 }
 
 .anime-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 24px;
+  padding: 0 10px;
+  line-height: 1;
   background: @card-bg;
   color: var(--font-color);
   font-size: 12px;
-  padding: 3px 10px;
   border-radius: 12px;
   border: 1px solid rgba(104, 198, 189, 0.15);
   transition: border-color 0.2s, color 0.2s;
