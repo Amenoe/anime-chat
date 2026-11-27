@@ -59,7 +59,10 @@ function normalizeOnlineUsers(raw: unknown): OnlineMember[] {
 
 function socketBaseUrl() {
   const serve = import.meta.env.VITE_SERVE_URL as string | undefined
-  return serve && serve.length ? serve : 'http://localhost:3000'
+  // 生产不配 VITE_SERVE_URL → 走同源：哪个域名打开页面就连哪个域名的 socket，
+  // 这样 www / anime 子域都能用，且登录态各自独立。开发环境仍显式配 3000。
+  if (serve && serve.length) return serve
+  return window.location.origin
 }
 
 export const useRoomStore = defineStore('room', () => {
