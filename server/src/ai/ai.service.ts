@@ -365,6 +365,9 @@ export class AiService {
    *    退回也只发生在上游不可用（用户无法主动制造），所以不构成绕过配额的口子。
    */
   async streamChat(res: Response, userId: string, dto: ChatDto): Promise<void> {
+    if (!aiConfig.enabled) {
+      throw new ServiceUnavailableException('AI 助手当前已由管理员临时关闭');
+    }
     await this.consumeQuota(userId);
 
     // 已有会话需先校验归属；新会话等上游连通后再落库
@@ -384,7 +387,9 @@ export class AiService {
       userAnime = await this.buildUserAnimeContext(userId);
     } catch (e) {
       // 摘要只是增强，查不到不该让整轮对话失败
-      this.logger.warn(`读取追番摘要失败，按无记录处理: ${e instanceof Error ? e.message : e}`);
+      this.logger.warn(
+        `读取追番摘要失败，按无记录处理: ${e instanceof Error ? e.message : e}`,
+      );
       userAnime = '';
     }
 
@@ -562,7 +567,8 @@ export class AiService {
     }
 
     const lines: string[] = [];
-    if (groups.watching.length) lines.push(`【在看】${groups.watching.join(';')}`);
+    if (groups.watching.length)
+      lines.push(`【在看】${groups.watching.join(';')}`);
     if (groups.done.length) lines.push(`【看完】${groups.done.join(';')}`);
     if (groups.wish.length) lines.push(`【想看】${groups.wish.join(';')}`);
     return lines.join('\n');

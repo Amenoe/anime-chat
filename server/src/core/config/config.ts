@@ -183,6 +183,8 @@ export const danmakuConfig = {
 };
 
 export const aiConfig = {
+  /** 总开关（支持管理端热改；关闭后 /api/ai/chat 在写 SSE 头前直接 503） */
+  enabled: (process.env.AI_ENABLED || 'true').toLowerCase() !== 'false',
   serviceUrl: (process.env.AI_SERVICE_URL || 'http://127.0.0.1:8013').replace(
     /\/+$/,
     '',
@@ -205,4 +207,10 @@ export const aiConfig = {
   upstreamTimeoutMs: Number(process.env.AI_UPSTREAM_TIMEOUT_MS || 120000),
   /** 单次流式总时限，需大于 anime-ai 侧模型超时（60s） */
   streamTimeoutMs: Number(process.env.AI_STREAM_TIMEOUT_MS || 180000),
+};
+
+/** 聊天图片/语音本地存储清理配置（避免 2C2G 小鸡磁盘被历史房间媒体撑满） */
+export const chatMediaConfig = {
+  /** 媒体文件保留天数（<=0 表示不自动清理；默认 7 天） */
+  ttlDays: Number(process.env.CHAT_MEDIA_TTL_DAYS || 7),
 };

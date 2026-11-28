@@ -35,6 +35,7 @@
 <script setup lang="ts">
 import { useRoomStore } from '@/stores/modules/room'
 import { useHomeStore } from '@/stores/modules/home'
+import { useLoginStore } from '@/stores/modules/login'
 import PlayerPane from '@/components/Room/PlayerPane.vue'
 import ChatPane from '@/components/Room/ChatPane.vue'
 import PlaylistPane from '@/components/Room/PlaylistPane.vue'
@@ -44,6 +45,7 @@ const route = useRoute()
 const router = useRouter()
 const roomStore = useRoomStore()
 const homeStore = useHomeStore()
+const loginStore = useLoginStore()
 
 const activeTab = ref<'chat' | 'playlist'>('chat')
 
@@ -53,6 +55,16 @@ const joining = computed(() => roomStore.joining)
 onMounted(async () => {
   const seasonId = route.params.seasonId as string
   if (!seasonId) {
+    router.replace('/')
+    return
+  }
+  if (!loginStore.token) {
+    loginStore.requestLogin(route.fullPath)
+    ElNotification({
+      type: 'info',
+      title: '请先登录',
+      message: '登录成功后将自动回到该放映室',
+    })
     router.replace('/')
     return
   }

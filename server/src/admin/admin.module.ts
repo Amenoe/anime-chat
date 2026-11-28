@@ -8,9 +8,12 @@ import { TrackEvent } from 'src/track/entities/track-event.entity';
 import { UserAnime } from 'src/user-anime/entities/user-anime.entity';
 import { User } from 'src/user/entities/user.entity';
 import { AdminAuditService } from './admin-audit.service';
+import { AdminConfigController } from './admin-config.controller';
+import { AdminConfigService } from './admin-config.service';
 import { AdminUserController } from './admin-user.controller';
 import { AdminUserService } from './admin-user.service';
 import { AdminAuditLog } from './entities/admin-audit-log.entity';
+import { SystemConfig } from './entities/system-config.entity';
 import { AdminReviewController } from './admin-review.controller';
 import { AdminReviewService } from './admin-review.service';
 
@@ -27,6 +30,7 @@ import { AdminReviewService } from './admin-review.service';
     TypeOrmModule.forFeature([
       User,
       AdminAuditLog,
+      SystemConfig,
       // 以下实体只服务于「详情统计」的计数，删除动作在 AccountCleanupModule 里
       AiConversation,
       AiMessage,
@@ -36,7 +40,16 @@ import { AdminReviewService } from './admin-review.service';
     AuthModule,
     AccountCleanupModule,
   ],
-  controllers: [AdminUserController, AdminReviewController],
-  providers: [AdminUserService, AdminAuditService, AdminReviewService],
+  controllers: [
+    AdminUserController,
+    AdminReviewController,
+    AdminConfigController,
+  ],
+  providers: [
+    AdminUserService,
+    AdminAuditService,
+    AdminReviewService,
+    AdminConfigService,
+  ],
 })
 export class AdminModule {}

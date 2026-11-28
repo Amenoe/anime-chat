@@ -43,6 +43,8 @@ import { useLoginStore } from '@/stores/modules/login'
 import type { FormInstance } from 'element-plus'
 const dialogVisible = ref(false)
 const loginStore = useLoginStore()
+const router = useRouter()
+const route = useRoute()
 
 const loginRef = ref<FormInstance>()
 
@@ -78,6 +80,10 @@ const loginClick = () => {
         type: 'success',
         title: '登录成功',
       })
+      const redirect = loginStore.consumePendingRedirect()
+      if (redirect && redirect !== route.fullPath) {
+        router.push(redirect)
+      }
     } catch {
       // 错误已由 axios 拦截器提示
     } finally {

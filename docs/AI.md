@@ -264,9 +264,8 @@ M3 的评估脚本**只调 `/internal/retrieve`**，不烧对话 token、不受�
 
 ### 下一步（按性价比）
 
-1. **显式重复 `meta_tags` 做 term weighting** —— 负结果② 直接指向的方向，
-   改一行 + 重导约 3.7 分钟，看能否超过 MRR 0.8056。
-2. 扩充 golden set（现 12 条，C2/S1 单点样本对结论影响偏大）。
+1. **显式重复 `meta_tags` 做 term weighting**（2026-11-28 代码已落地：`AI_CORPUS_META_TAGS_WEIGHT`，默认 2，设为 1 可还原基线；待连接 Qdrant 重导语料后跑 `eval/run_eval.py` 复测对比 MRR 0.8056）。
+2. **扩充 golden set**（2026-11-28 已从 12 条扩至 24 条 v2：title 5 / concept 10 / filter 5 / synonym 4）。
 3. 台词 RAG（仅当确需「第几集第几秒」）：用户上传字幕 → 语义切分（句号/1.5s 静默，
    15–80 字）→ BM25 + 向量 + RRF → `search_subtitles`，元数据带
    `(subject_id, episode, start_ms, end_ms)`；字幕原文不进 MySQL。

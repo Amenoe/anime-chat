@@ -10,7 +10,7 @@
 >   §3.2 级联清理（`AccountCleanupService`）、§3.3 越权枚举处置、§4 用户管理
 > - ✅ 额外完成：抽公共 `RootGuard` 替换两份 `assertRoot`；删除整个停用的番剧 HTTP 子系统（§8 方案 A）
 > - ✅ §5 AI 会话审阅、§6 埋点明细查询与导出
-> - ⬜ §7 系统配置
+> - ✅ §7 系统配置（2026-11-28：`system_config` 表 + 白名单热改 `ai.enabled` / `ai.dailyQuota` / `ai.historyWindow` / `qb.enabled` + 前端「系统配置」Tab + 审计）
 > - ⚠️ **§3.3 的处置方式与原文不同**：原文建议把 `GET /api/user` 收紧为仅 root，
 >   实际选择**直接删除** —— 管理端列表已由 `/api/admin/users`（分页 + 关键词 + 字段白名单）承担，
 >   保留一个无分页的 root-only 副本只是死代码。

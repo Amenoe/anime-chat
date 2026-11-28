@@ -16,7 +16,7 @@
           <div class="admin-head__title">
             <span class="admin-head__bar"></span>
             <h2>管理后台</h2>
-            <span class="admin-head__sub">数据看板 · 用户 · 会话 · 埋点</span>
+            <span class="admin-head__sub">数据看板 · 用户 · 会话 · 埋点 · 配置</span>
           </div>
           <div class="admin-head__ops">
             <!-- 统计区间只对数据看板有意义，放到用户管理 tab 会让人以为它在筛用户 -->
@@ -492,6 +492,69 @@
               </el-table>
             </section>
           </el-tab-pane>
+
+          <el-tab-pane label="系统配置" name="config" lazy>
+            <section class="admin-section">
+              <h3 class="admin-section__title">
+                白名单运行时配置（修改后当前实例立即生效并记审计）
+              </h3>
+              <el-table v-loading="configLoading" :data="configItems" class="admin-table" stripe>
+                <el-table-column label="配置项" width="180">
+                  <template #default="{ row }">
+                    <strong>{{ row.key }}</strong>
+                    <div class="user-cell__sub">默认：{{ String(row.defaultValue) }}</div>
+                  </template>
+                </el-table-column>
+                <el-table-column label="说明" prop="description" min-width="240" />
+                <el-table-column label="当前值" width="210">
+                  <template #default="{ row }">
+                    <el-switch
+                      v-if="row.type === 'boolean'"
+                      :model-value="Boolean(configDrafts[row.key])"
+                      @update:model-value="(val: string | number | boolean) => (configDrafts[row.key] = Boolean(val))"
+                    />
+                    <el-input-number
+                      v-else
+                      :model-value="Number(configDrafts[row.key] ?? row.value)"
+                      :min="row.min ?? 0"
+                      :max="row.max ?? 100000"
+                      :step="1"
+                      size="small"
+                      controls-position="right"
+                      @update:model-value="(val: number | undefined) => (configDrafts[row.key] = val ?? row.value)"
+                    />
+                  </template>
+                </el-table-column>
+                <el-table-column label="最近修改" width="210">
+                  <template #default="{ row }">
+                    <span v-if="row.updateTime" class="user-cell__sub">
+                      {{ row.updateBy || '—' }} · {{ formatUtcString(row.updateTime) }}
+                    </span>
+                    <span v-else class="user-cell__sub">未覆盖（环境变量）</span>
+                  </template>
+                </el-table-column>
+                <el-table-column label="操作" width="100" align="right">
+                  <template #default="{ row }">
+                    <el-button
+                      type="primary"
+                      size="small"
+                      :loading="configSavingKey === row.key"
+                      :disabled="configDrafts[row.key] === row.value"
+                      @click="saveConfigItem(row)"
+                    >
+                      保存
+                    </el-button>
+                  </template>
+                </el-table-column>
+                <template #empty>
+                  <el-empty
+                    :description="configLoading ? '加载中…' : '暂无配置'"
+                    :image-size="50"
+                  />
+                </template>
+              </el-table>
+            </section>
+          </el-tab-pane>
         </el-tabs>
 
         <el-dialog
@@ -613,6 +676,7 @@ import AppChart from '@/components/Chart/AppChart.vue'
 import {
   deleteAdminUser,
   getAdminAuditLogs,
+  getAdminConfig,
   getAdminUserDetail,
   getAdminAiMessages,
   listAdminAiConversations,
@@ -627,6 +691,7 @@ import {
   resetAdminUserPassword,
   setAdminUserBanned,
   setAdminUserRole,
+  updateAdminConfig,
   type AdminUserRole,
   type IAdminAuditLog,
   type IAdminAiMessage,
@@ -637,6 +702,7 @@ import {
   type IAiDaily,
   type IAiEngagement,
   type IAiTopUser,
+  type ISystemConfigItem,
   type ITrackDaily,
   type ITrackOverview,
   type ITrackTopEvent,
@@ -667,10 +733,47 @@ const errorMsg = ref('')
  * 分区。看板在前、用户管理在后 —— 默认停在看板，
  * 这样既有书签/习惯不变，也不会一进管理页就同时打统计与用户两套接口。
  */
-type AdminTab = 'dashboard' | 'users' | 'ai-review' | 'track-events'
+type AdminTab = 'dashboard' | 'users' | 'ai-review' | 'track-events' | 'config'
 const activeTab = ref<AdminTab>('dashboard')
 /** 用户列表只在**首次**切到该分区时拉取（`el-tab-pane` 的 lazy 只管渲染，不管取数） */
 const usersLoaded = ref(false)
+const configLoaded = ref(false)
+const configLoading = ref(false)
+const configSavingKey = ref('')
+const configItems = ref<ISystemConfigItem[]>([])
+const configDrafts = reactive<Record<string, boolean | number>>({})
+
+async function loadConfig() {
+  configLoading.value = true
+  try {
+    const list = (await getAdminConfig()) || []
+    configItems.value = list
+    for (const item of list) {
+      configDrafts[item.key] = item.value
+    }
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    configLoading.value = false
+  }
+}
+
+async function saveConfigItem(row: ISystemConfigItem) {
+  const nextValue = configDrafts[row.key]
+  if (nextValue === undefined || nextValue === row.value) return
+  configSavingKey.value = row.key
+  try {
+    const updated = await updateAdminConfig(row.key, nextValue)
+    const idx = configItems.value.findIndex((item) => item.key === row.key)
+    if (idx >= 0) configItems.value[idx] = updated
+    configDrafts[row.key] = updated.value
+    ElMessage.success(`已更新 ${row.key}`)
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    configSavingKey.value = ''
+  }
+}
 
 /**
  * 用 `tab-click` 而不是 `tab-change` 记埋点：前者只在**用户点击**时触发，
@@ -691,6 +794,10 @@ function onTabChange(name: unknown) {
   }
   if (String(name) === 'ai-review') void searchConversations()
   if (String(name) === 'track-events') void searchTrackEvents()
+  if (String(name) === 'config' && !configLoaded.value) {
+    configLoaded.value = true
+    void loadConfig()
+  }
 }
 
 const reviewQuery = reactive<{ userId: string; from: Date | null; to: Date | null }>({
@@ -1276,13 +1383,19 @@ function onSizeChange(size: number) {
 }
 
 /** 头部刷新按钮：按当前分区决定刷什么，避免在用户管理页刷了半天统计 */
-const busy = computed(() =>
-  activeTab.value === 'users' ? usersLoading.value || auditLoading.value : loading.value,
-)
+const busy = computed(() => {
+  if (activeTab.value === 'users') return usersLoading.value || auditLoading.value
+  if (activeTab.value === 'config') return configLoading.value
+  return loading.value
+})
 
 function onRefresh() {
   if (activeTab.value === 'users') {
     void refreshUserViews()
+    return
+  }
+  if (activeTab.value === 'config') {
+    void loadConfig()
     return
   }
   void loadAll()

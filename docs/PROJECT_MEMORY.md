@@ -98,10 +98,8 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 
 ### 进行中 / 待办
 
-- **RAG 下一步**（#16）：显式重复 `meta_tags` 做 term weighting、扩充 golden set（现 12 条）；
-  台词 RAG 与弹幕库仅规划、未实施（见 [`AI.md`](./AI.md) §6）
-- **管理端剩余**（#20）：系统配置（P2）、番剧数据维护（按方案 A 删除，见 [`admin-roadmap.md`](./admin-roadmap.md) §8）
-- 已知未修：`pnpm build` 在 pnpm 10 下因 `config.commitizen` 失败（验收用 `type-check && build-only` 代替）
+- **RAG 下一步**（#16）：`meta_tags` 显式 term weighting（`AI_CORPUS_META_TAGS_WEIGHT`，默认 2）与 golden set 扩充（12 → 24 条 v2）已落代码，待连接 Qdrant 重导语料后跑 `eval/run_eval.py` 复测对比；台词 RAG 与弹幕库仅规划、未实施（见 [`AI.md`](./AI.md) §6）
+- **管理端剩余**（#20）：P0/P1/P2 主体（含系统配置白名单热改）已全部完成；物化汇总表与会话 TTL 按触发条件按需启动（见 [`admin-roadmap.md`](./admin-roadmap.md) §9）
 
 ### 放映室核心设计决策（取代旧 specs，勿再改回）
 
@@ -143,7 +141,7 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 16 | P2 | RAG / 知识库 / Workflow 能力建设 | 🔄 2026-10-23 | 见 `AI.md`。**M1/M2 已验收**：3000 条语料、幂等/增量断言、冷启动 3 分 42 秒；检索策略对照后 **`hybrid` 成为默认（Hit Rate@10 100% / MRR 0.8056，基线 91.7% / 0.6285）**，RRF 与语料去噪两个改动被数据否掉。**2026-10-23 收尾**：策略/开关改配置、`search_knowledge` 两级降级、工具失败不再把原始异常塞回模型；新增系列级知识（TMDB `series_outline` / `find_character_episodes`）。**M5 取消**，台词 RAG / 弹幕仅规划。下一步：`meta_tags` term weighting、扩 golden set（见 `AI.md` §6） |
 | 18 | P1 | 看板 v2：亮色适配 / 事件中文化 / 指标重构 / AI 登录门禁 | ✅ 2026-09-22 | 新增 `stats/engagement`（访问量·消耗·使用率）；`CHART_COLORS` 改为运行时读 CSS 变量（图表终于跟随主题）；事件中文名映射 `constants/track-events.ts`；AI 页未登录不再发请求。**顺带修出 `search.submit` 从未上报**（见 §4） |
 | 19 | P1 | anime-ai 话题范围守卫（只聊动漫） | ✅ 2026-09-22 | 提示词加固 + 输入前置拦截，**fail-open**。拒答走正常 SSE、`finishReason=SCOPE_REJECTED`、不计为错误。71 项纯函数单测 |
-| 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | 🔄 2026-10-23 | 见 `admin-roadmap.md`。**已完成**：用户管理（含前端）+ 安全收口（封禁三处即时失效、`RootGuard`、`admin/users`、级联删号、审计表）、**AI 会话审阅**（列表不回标题原文、单会话读取审计）、**埋点明细查询/导出**（游标分页、CSV 注入防护、硬上限）。**剩余**：系统配置（P2）、番剧数据维护（按方案 A 删除，见 roadmap §8） |
+| 20 | P1 | 管理员功能建设（用户管理 / AI 会话审阅 / 埋点明细 / 系统配置 / 番剧数据） | ✅ 2026-11-28 | 见 `admin-roadmap.md`。用户管理 + 安全收口、番剧停用接口删除（方案 A）、AI 会话审阅、埋点明细查询/导出、**系统配置白名单热改**（`system_config` 表 + `/api/admin/config` + 前端 Tab + 审计）均已落地 |
 | 21 | P1 | 播放能力拆分：详情页移除播放 + 新增点播室 `/vod` | ✅ 2026-10-30 | 详情页 `PlaybackPanel` 删除；点播室是**私人房间**（`POST /api/rooms/vod`，`anime_id=0` 不进公开列表，邀请链接 `/vod/:seasonId`）：房主选源、成员只读同步，房间内聊天、无弹幕，**房主离开即解散**；聊天面板抽 `ChatPaneBase` 与放映室共用；双浏览器实测：建房→邀请→跟随播放→聊天→房主退出解散 |
 | 22 | P1 | 修「下载前就判定不能播 / 下载完也不能播」→ 边下边播 | ✅ 2026-10-30 | ① `create()` 不再同步等 metadata（超时不再是 400）；② qB 加种幂等 + 只下选中文件 + 顺序下载；③ 出流按「已下载字节」裁剪 Range，不足返回 503；④ **`local_path` 曾被写成种子目录**（多文件种子 `content_path` 是目录）→ 下载完也播不了；⑤ mkv/HEVC 用 ffmpeg 转 HLS 分片（真实时长 + 可拖动）；⑥ 前端缓冲自动重试。见 §4 |
 | 24 | P2 | 字幕字号可调（ASS 特效暂不做） | ✅ 2026-10-31 | `AnimePlayer` 用 `video::cue` 动态规则给 80/100/130/160% 四档，localStorage 持久化；ASS 特效（描边/字体/定位）需要 JASSUB 或服务端烧录，方案已写进 `playback-architecture.md`，未实现 |
@@ -152,6 +150,14 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 ---
 
 ## 4. 修复记录
+
+### 2026-11-28 · 方案 A 快速收口（邀请回跳 / 系统配置热改 / 聊天媒体清理 / build 修复 / RAG 权重与评测集）
+
+- **邀请链接登录后自动回跳**：`login` store 新增 `pendingRedirect`（同步 `sessionStorage`、限制站内相对路径防开放重定向）与 `requestLogin()` 信号；未登录访问 `/room/:seasonId` 或 `/vod/:seasonId` 时记录原路径、弹出登录框并提示，登录成功后 `LoginDialog` 自动跳回原房间。
+- **管理端「系统配置」白名单热改（#20 §7）**：新增 `system_config` 表（同步 `docs/schema.sql`）、`AdminConfigController` / `AdminConfigService`（`GET /api/admin/config`、`PATCH /api/admin/config/:key`，逐端点挂 `AuthGuard('jwt'), RootGuard`），白名单支持 `ai.enabled`（关闭后 `/api/ai/chat` 写 SSE 头前直接 503）、`ai.dailyQuota`、`ai.historyWindow`、`qb.enabled`，写库与 `config.update` 审计同事务、提交后刷内存，启动自动回填；前端 `/admin` 新增「系统配置」Tab。
+- **聊天媒体定时清理 & `pnpm build` 修复**：`ChatMediaService` 增加启动与每 6 小时 TTL 清理（`CHAT_MEDIA_TTL_DAYS`，默认 7 天）；前端 `package.json` 的 `build` 从 `run-p` 改为 `pnpm run type-check && pnpm run build-only`，彻底解决 pnpm 10/12 下 `pnpm build` 失败。
+- **RAG 低成本提分（#16，`anime-ai` 独立仓）**：`CorpusLoader` 增加可配置 `ai.corpus.meta-tags-weight`（`AI_CORPUS_META_TAGS_WEIGHT`，1–3 默认 2，仅作用于检索文本、不污染 payload）并补 `CorpusLoaderTest`；`eval/golden-set.json` 从 12 条扩至 24 条（v2，4 类均衡）。
+- **验证**：前端 `pnpm build && pnpm lint` 全绿；后端 `tsc --noEmit` / `nest build` / `eslint`（0 error）/ `prettier --check` 全绿；后端真实启动（`NODE_ENV=development node dist/main.js`）路由映射正常，`scripts/admin-e2e.mjs` 59/59 全绿、Plan A 专项验收 13/13 全绿（含普通用户 403、非白名单/越界 400、`ai.enabled=false` 写头前 503、审计落库、聊天媒体 TTL 清理）；浏览器端到端实测通过（未登录访问 `/vod/testroom01` 自动弹登录框并在登录后回跳、管理后台「系统配置」修改/持久化/恢复正常、0 控制台错误）；`anime-ai` `mvn -B clean test -Dtest=CorpusLoaderTest,TopicScopeGuardTest` 68/68 全绿。未执行：连接本机 Qdrant 重导 3000 条语料并跑 `eval/run_eval.py`（当前本机未启 Qdrant）。
 
 ### 2026-11-26 · 标签与侧边栏图标垂直对齐
 

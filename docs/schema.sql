@@ -257,3 +257,15 @@ CREATE TABLE IF NOT EXISTS `admin_audit_log` (
   KEY `IDX_admin_audit_action_time` (`action`,`create_time`),
   KEY `IDX_admin_audit_target` (`target_type`,`target_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ============================================================
+-- 15. system_config（管理端白名单系统配置，热改持久化）
+-- ============================================================
+CREATE TABLE IF NOT EXISTS `system_config` (
+  `config_key` varchar(64) NOT NULL,
+  `config_value` varchar(512) NOT NULL,
+  `description` varchar(255) NOT NULL DEFAULT '',
+  `update_by` varchar(36) NOT NULL DEFAULT '',
+  `update_time` datetime(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6) ON UPDATE CURRENT_TIMESTAMP(6),
+  PRIMARY KEY (`config_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

@@ -112,6 +112,15 @@ function showRegisterDialog() {
   registerRef.value!.dialogVisible = true
 }
 
+watch(
+  () => loginStore.loginPromptSeq,
+  () => {
+    if (isMobile.value && !isLogin.value && loginRef.value) {
+      loginRef.value.dialogVisible = true
+    }
+  },
+)
+
 const onMqChange = (e: MediaQueryListEvent | MediaQueryList) => {
   isMobile.value = e.matches
   asideVisible.value = !e.matches

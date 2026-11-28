@@ -479,3 +479,10 @@ MinIO 头像（best-effort，失败只记日志不阻断 —— 账号都删了�
 `action` 取值：`user.ban` / `user.role` / `user.password` / `user.delete`
 （后续还有 `ai.read` / `track.export` / `config.update`）。
 `detail` 记「改了什么、从什么变成什么」，**绝不写密码或令牌明文**。
+
+
+### 7.6 系统配置（白名单热改，均需 root）
+
+- `GET /api/admin/config` → 返回白名单配置列表：`Array<{ key, type, value, defaultValue, description, min?, max?, overridden, updateBy, updateTime }>`
+- `PATCH /api/admin/config/:key`（body：`{ value: boolean | number | string }`）→ 校验白名单与值域 → 同事务写入 `system_config` 并记录 `admin_audit_log`（`action='config.update'`，`detail: { from, to }`）→ 事务提交后刷新本机内存配置对象。
+- 白名单键：`ai.enabled`（关闭后 `/api/ai/chat` 在写 SSE 头前直接 503）、`ai.dailyQuota`（0–10000，0=不限）、`ai.historyWindow`（2–50）、`qb.enabled`。非白名单键一律 400。

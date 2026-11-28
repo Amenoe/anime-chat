@@ -4,11 +4,50 @@ import type { apiType } from '../types'
 import localCache from '@/utils/cache'
 import type { IUserInfo } from '@/api/types'
 
+const REDIRECT_STORAGE_KEY = 'pending_login_redirect'
+
+/** 只接受站内相对路径（单斜杠开头、排除 `//evil.com` 协议相对地址），防开放重定向 */
+function sanitizeRedirect(path?: string | null): string {
+  if (!path || typeof path !== 'string') return ''
+  const trimmed = path.trim()
+  if (!trimmed.startsWith('/') || trimmed.startsWith('//')) return ''
+  return trimmed
+}
+
 export const useLoginStore = defineStore('login', () => {
   const userInfo = ref<IUserInfo>()
   const token = ref('')
   const accessToken = ref('')
   const refreshTokenValue = ref('')
+  /** 登录后自动回跳目标（如未登录打开放映室/点播室邀请链接） */
+  const pendingRedirect = ref(sanitizeRedirect(sessionStorage.getItem(REDIRECT_STORAGE_KEY)))
+  /** 递增信号：通知顶栏/移动端宿主弹出登录框 */
+  const loginPromptSeq = ref(0)
+
+  function setPendingRedirect(path?: string | null) {
+    const safe = sanitizeRedirect(path)
+    pendingRedirect.value = safe
+    if (safe) {
+      sessionStorage.setItem(REDIRECT_STORAGE_KEY, safe)
+    } else {
+      sessionStorage.removeItem(REDIRECT_STORAGE_KEY)
+    }
+  }
+
+  /** 消费并清空待回跳地址（仅在登录成功后调用一次） */
+  function consumePendingRedirect(): string {
+    const target = sanitizeRedirect(
+      pendingRedirect.value || sessionStorage.getItem(REDIRECT_STORAGE_KEY),
+    )
+    setPendingRedirect('')
+    return target
+  }
+
+  /** 记录待回跳路径并唤起全局登录弹窗 */
+  function requestLogin(redirect?: string) {
+    if (redirect) setPendingRedirect(redirect)
+    loginPromptSeq.value += 1
+  }
 
   function setUserInfo(data: IUserInfo) {
     userInfo.value = data
@@ -100,6 +139,11 @@ export const useLoginStore = defineStore('login', () => {
     accessToken,
     refreshToken: refreshTokenValue,
     userInfo,
+    pendingRedirect,
+    loginPromptSeq,
+    setPendingRedirect,
+    consumePendingRedirect,
+    requestLogin,
     loginAction,
     loadLocalLogin,
     updateUserAction,

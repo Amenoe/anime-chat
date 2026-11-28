@@ -77,6 +77,12 @@ onMounted(async () => {
     return
   }
   if (!loginStore.token) {
+    loginStore.requestLogin(route.fullPath)
+    ElNotification({
+      type: 'info',
+      title: '请先登录',
+      message: '登录成功后将自动回到该点播室',
+    })
     router.replace('/vod')
     return
   }

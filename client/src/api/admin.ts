@@ -315,3 +315,29 @@ export function getAdminAiMessages(id: string) {
     url: `/admin/ai/conversations/${encodeURIComponent(id)}/messages`,
   })
 }
+
+// ── 系统配置（`/api/admin/config`，白名单热改）────────────────────
+
+export interface ISystemConfigItem {
+  key: string
+  type: 'boolean' | 'integer'
+  value: boolean | number
+  defaultValue: boolean | number
+  description: string
+  min?: number
+  max?: number
+  overridden: boolean
+  updateBy: string
+  updateTime: string | null
+}
+
+export function getAdminConfig() {
+  return request.get<ISystemConfigItem[]>({ url: '/admin/config' })
+}
+
+export function updateAdminConfig(key: string, value: boolean | number) {
+  return request.patch<ISystemConfigItem>({
+    url: `/admin/config/${encodeURIComponent(key)}`,
+    data: { value },
+  })
+}

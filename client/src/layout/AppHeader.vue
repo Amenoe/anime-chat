@@ -83,6 +83,15 @@ const showLoginDialog = () => {
   loginRef.value!.dialogVisible = true
 }
 
+watch(
+  () => loginStore.loginPromptSeq,
+  () => {
+    if (!isLogin.value && loginRef.value) {
+      loginRef.value.dialogVisible = true
+    }
+  },
+)
+
 const showRegisterDialog = () => {
   registerRef.value!.dialogVisible = true
 }
