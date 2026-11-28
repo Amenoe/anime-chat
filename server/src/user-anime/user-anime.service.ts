@@ -32,7 +32,10 @@ export class UserAnimeService {
         row.total_episodes = dto.total_episodes;
       }
       // 进度取较大值：重新收藏不该把「已经看到第 8 集」退回到 0
-      if (dto.watched_episode !== undefined && dto.watched_episode > row.watched_episode) {
+      if (
+        dto.watched_episode !== undefined &&
+        dto.watched_episode > row.watched_episode
+      ) {
         row.watched_episode = dto.watched_episode;
       }
     } else {
@@ -68,8 +71,24 @@ export class UserAnimeService {
     }
     // **重看不影响进度**：取较大值。
     // 用户在放映室或播放页重看旧集时，不该把「已经看到第 20 话」退回第 3 话。
-    if (dto.watched_episode !== undefined && dto.watched_episode > row.watched_episode) {
+    if (
+      dto.watched_episode !== undefined &&
+      dto.watched_episode > row.watched_episode
+    ) {
       row.watched_episode = dto.watched_episode;
+    }
+
+    // 未显式指定状态且上报了观看集数时，自动推进状态：想看 → 在看，看完最后一话 → 看完
+    if (
+      dto.status === undefined &&
+      dto.watched_episode !== undefined &&
+      dto.watched_episode > 0
+    ) {
+      if (row.total_episodes > 0 && row.watched_episode >= row.total_episodes) {
+        row.status = 'done';
+      } else if (row.status === 'wish') {
+        row.status = 'watching';
+      }
     }
 
     // 注意：这里必须与上面实际赋值的字段**保持同步**，

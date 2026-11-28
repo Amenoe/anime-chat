@@ -32,6 +32,12 @@ export const useRouteStore = defineStore('route', () => {
       icon: 'MagicStick',
     },
     {
+      name: '放映大厅',
+      routeName: 'Rooms',
+      routePath: 'rooms',
+      icon: 'Film',
+    },
+    {
       name: '点播室',
       routeName: 'Vod',
       routePath: 'vod',

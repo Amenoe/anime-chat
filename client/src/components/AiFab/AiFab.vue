@@ -138,6 +138,7 @@ import AiMessageItem from '@/views/ai/components/AiMessageItem.vue'
 import LoginDialog from '@/components/Login/LoginDialog.vue'
 import { useAiStore } from '@/stores/modules/ai'
 import { useLoginStore } from '@/stores/modules/login'
+import { useUserAnimeStore } from '@/stores/modules/userAnime'
 
 /**
  * 全局 AI 悬浮气泡：任意页面都能快速问一句。
@@ -154,6 +155,7 @@ defineOptions({ name: 'AiFab' })
 
 const store = useAiStore()
 const loginStore = useLoginStore()
+const userAnimeStore = useUserAnimeStore()
 const route = useRoute()
 const router = useRouter()
 
@@ -204,12 +206,23 @@ watch(
   { flush: 'post' },
 )
 
-// 抽屉打开时若还没拉过会话，补一次；已登录才发请求
+// 抽屉打开时若还没拉过会话/追番状态，补一次；已登录才发请求
 watch(open, (visible) => {
-  if (visible && isLogin.value && !store.conversations.length && !store.conversationsLoading) {
-    void store.fetchConversations()
+  if (visible && isLogin.value) {
+    if (!store.conversations.length && !store.conversationsLoading) {
+      void store.fetchConversations()
+    }
+    void userAnimeStore.ensureStatusIndex().catch(() => undefined)
   }
 })
+
+// 从悬浮抽屉点卡片跳详情或「一起看」进放映室后自动收起抽屉
+watch(
+  () => route.fullPath,
+  () => {
+    open.value = false
+  },
+)
 
 function sendText(text: string) {
   const content = text.trim()

@@ -1,5 +1,12 @@
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Min, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class CreateRoomDto {
   @Type(() => Number)
@@ -20,4 +27,9 @@ export class CreateRoomDto {
   @IsString()
   @MinLength(1)
   group_name?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(512)
+  cover?: string;
 }

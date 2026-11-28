@@ -158,10 +158,17 @@ Body：`{ "status": 0 | 1 }`
 | 接口 | 说明 |
 | --- | --- |
 | POST `/api/user-anime` — JWT | upsert（新增或覆盖状态） |
-| PATCH `/api/user-anime/:bangumiId` — JWT | 改状态，可选同步 title/name_cn/cover |
+| PATCH `/api/user-anime/:bangumiId` — JWT | 改状态，可选同步 title/name_cn/cover/watched_episode/total_episodes。**自动流转**：未显式传 `status` 且上报 `watched_episode > 0` 时，若 `total_episodes > 0` 且 `watched_episode >= total_episodes` 自动置 `done`，否则原为 `wish` 自动推进为 `watching`（进度单调递增不回退） |
 | DELETE `/api/user-anime/:bangumiId` — JWT | 取消追番 |
 | GET `/api/user-anime` — JWT | 查列表，`?status=` 过滤，按 update_time 倒序 |
 | GET `/api/user-anime/:bangumiId` — JWT | 查单条，无则 `data: null` |
+
+### 3.1 公开放映室与建房补充
+
+| 接口 | 说明 |
+| --- | --- |
+| `GET /api/rooms/public?limit=&q=` — **公开无需 JWT** | 公开放映室大厅列表；仅返回 `anime_id > 0` 且 `is_public = 1` 的放映室（私人点播室永不露出），`limit` 收敛到 `1..50`（默认 `20`），`q` 按房间名/`playback_title` LIKE（`!` 转义）过滤；返回 `{ group_id, season_id, anime_id, group_name, cover, playback_status, playback_episode_sort, playback_title, host_user_id, host_nickname, host_avatar, online_count, create_time }[]`，按在线人数、播放中状态、创建时间倒序排列 |
+| `POST /api/rooms` — JWT | 新建放映室；除 `anime_id`/`episode_id?`/`episode_sort?`/`group_name?` 外，支持可选 `cover?`（最长 512 字符）供大厅/首页卡片展示 |
 
 ## 4. AI 助手（2026-09-21 新增）
 
@@ -287,7 +294,8 @@ event:done          data:{"conversationId":"...","finishReason":"SCOPE_REJECTED"
 | 前缀 | 来源 | 示例 |
 | --- | --- | --- |
 | `page.view` | 前端路由（`router.afterEach`） | `page.view { page: 'Ai' }` |
-| `ai.*` | 前端行为 | `ai.send.click` / `ai.done` / `ai.card.click` / `ai.welcome.view` |
+| `ai.*` | 前端行为 | `ai.send.click` / `ai.done` / `ai.card.click` / `ai.card.watch` / `ai.card.collect` / `ai.welcome.view` |
+| `room.*` / `user.*` | 前端行为 | `room.lobby.join` / `room.collect.change` / `user.anime.watch` |
 | `search.*` | 前端行为（搜索页） | `search.submit` / `search.result.click` |
 | `admin.*` | 前端行为（看板自身） | `admin.range.change` / `admin.refresh` |
 | `ai.chat` | **后端**业务事件 | 见下 |

@@ -20,6 +20,9 @@ const PAGE_LABELS: Record<string, string> = {
   Home: '首页',
   Search: '搜索页',
   Ai: '番剧助手',
+  Rooms: '放映大厅',
+  Vod: '点播室',
+  VodRoom: '点播室房间',
   User: '个人中心',
   Admin: '管理看板',
   Detail: '番剧详情',
@@ -47,6 +50,13 @@ const EVENT_LABELS: Record<string, string> = {
   'ai.conversation.delete': '删除对话',
   'ai.welcome.view': 'AI 欢迎页曝光',
   'ai.card.click': 'AI 推荐卡片点击',
+  'ai.card.watch': 'AI 卡片一键一起看',
+  'ai.card.collect': 'AI 卡片快捷追番',
+
+  // ── 放映室 / 追番闭环 ─────────────────────────────
+  'room.lobby.join': '放映大厅加入房间',
+  'room.collect.change': '放映室内变更追番状态',
+  'user.anime.watch': '我的追番一键进放映室',
 
   // ── 搜索 ──────────────────────────────────────────
   'search.submit': '提交搜索',

@@ -61,17 +61,29 @@
                   {{ item.name_cn || item.title || `番剧 #${item.bangumi_id}` }}
                 </div>
                 <div class="collect-card__meta">
-                  <span class="collect-card__tag">{{ userAnimeStore.labelOf(item.status) }}</span>
-                  <!--
-                    观看进度。只在「看过至少一集」时显示 ——
-                    没开始看就摆一个「第 0 集」纯属噪音。
-                  -->
-                  <span v-if="item.watched_episode > 0" class="collect-card__progress">
-                    {{ progressText(item) }}
-                  </span>
-                  <el-button link type="danger" @click.stop="onCancel(item.bangumi_id)">
-                    取消
-                  </el-button>
+                  <div class="collect-card__status-wrap">
+                    <span class="collect-card__tag">{{ userAnimeStore.labelOf(item.status) }}</span>
+                    <!--
+                      观看进度。只在「看过至少一集」时显示 ——
+                      没开始看就摆一个「第 0 集」纯属噪音。
+                    -->
+                    <span v-if="item.watched_episode > 0" class="collect-card__progress">
+                      {{ progressText(item) }}
+                    </span>
+                  </div>
+                  <div class="collect-card__ops">
+                    <el-button
+                      link
+                      type="primary"
+                      :disabled="watchRoomLoading"
+                      @click.stop="onWatchCollection(item)"
+                    >
+                      {{ item.watched_episode > 0 ? '继续看' : '一起看' }}
+                    </el-button>
+                    <el-button link type="danger" @click.stop="onCancel(item.bangumi_id)">
+                      取消
+                    </el-button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -234,6 +246,8 @@
 <script setup lang="ts">
 import { useLoginStore } from '@/stores/modules/login'
 import { useUserAnimeStore } from '@/stores/modules/userAnime'
+import { useWatchRoom } from '@/composables/useWatchRoom'
+import { track } from '@/utils/track'
 import { updateUserStatus } from '@/api/login'
 import {
   addMediaSource,
@@ -783,8 +797,27 @@ function progressText(item: IUserAnime): string {
   return item.total_episodes > 0 ? `看到第 ${seen} 话 / 共 ${total} 话` : `看到第 ${seen} 话`
 }
 
+const { roomLoading: watchRoomLoading, enterOrCreateRoom } = useWatchRoom()
+
 function goDetail(id: number) {
   router.push(`/detail/${id}`)
+}
+
+async function onWatchCollection(item: IUserAnime) {
+  const title = item.name_cn || item.title || `番剧 #${item.bangumi_id}`
+  const res = await enterOrCreateRoom({
+    animeId: item.bangumi_id,
+    title,
+    cover: item.cover,
+    episodeSort: item.watched_episode > 0 ? item.watched_episode : undefined,
+  })
+  if (res) {
+    track('user.anime.watch', {
+      id: item.bangumi_id,
+      status: item.status,
+      mode: res.mode,
+    })
+  }
 }
 
 async function onCancel(bangumiId: number) {
@@ -916,6 +949,21 @@ async function onCancel(bangumiId: number) {
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  &__status-wrap {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+  }
+
+  &__ops {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
   }
 
   &__tag {

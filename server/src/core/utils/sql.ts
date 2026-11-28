@@ -44,3 +44,8 @@ export function rowToNumbers<T extends Record<string, unknown>>(
 ): T {
   return toNumbers([row], keys)[0];
 }
+
+/** 转义 LIKE 通配符，配合 `ESCAPE '!'` 使用 */
+export function escapeLike(input: string): string {
+  return input.replace(/[!%_]/g, (c) => `!${c}`);
+}

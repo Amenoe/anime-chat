@@ -145,11 +145,13 @@ import LoginDialog from '@/components/Login/LoginDialog.vue'
 import RegisterDialog from '@/components/Login/RegisterDialog.vue'
 import { useAiStore } from '@/stores/modules/ai'
 import { useLoginStore } from '@/stores/modules/login'
+import { useUserAnimeStore } from '@/stores/modules/userAnime'
 
 defineOptions({ name: 'Ai' })
 
 const store = useAiStore()
 const loginStore = useLoginStore()
+const userAnimeStore = useUserAnimeStore()
 const draft = ref('')
 const asideOpen = ref(false)
 const scrollRef = ref<HTMLElement>()
@@ -178,6 +180,7 @@ onMounted(() => {
   // 未登录时不发请求：后端必然 401，白白触发一次 token 刷新尝试 + 「请重新登录」弹窗
   if (!isLogin.value) return
   void store.fetchConversations()
+  void userAnimeStore.ensureStatusIndex().catch(() => undefined)
 })
 
 /**
@@ -189,6 +192,7 @@ onMounted(() => {
 watch(isLogin, (logged) => {
   if (logged) {
     void store.fetchConversations()
+    void userAnimeStore.ensureStatusIndex().catch(() => undefined)
   } else {
     store.reset()
   }

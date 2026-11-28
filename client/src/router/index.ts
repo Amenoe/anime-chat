@@ -28,6 +28,12 @@ const routes: RouteRecordRaw[] = [
     redirect: '/ai',
   },
   {
+    // 放映大厅：公开放映室列表
+    path: '/rooms',
+    name: 'Rooms',
+    component: () => import('@/views/rooms/RoomLobby.vue'),
+  },
+  {
     // 点播室入口：创建私人房间 / 用邀请链接加入
     path: '/vod',
     name: 'Vod',

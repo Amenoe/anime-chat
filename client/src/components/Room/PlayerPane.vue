@@ -26,6 +26,31 @@
         >
       </div>
       <div class="player-pane__actions">
+        <el-dropdown
+          v-if="bangumiId"
+          trigger="click"
+          popper-class="room-collect-dropdown"
+          @command="onCollectCommand"
+        >
+          <button
+            type="button"
+            class="player-pane__source-btn"
+            :class="{ 'is-active': !!userAnimeStore.current }"
+            :disabled="collectSaving"
+          >
+            {{ collectBtnText }} ▾
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="wish">想看</el-dropdown-item>
+              <el-dropdown-item command="watching">在看</el-dropdown-item>
+              <el-dropdown-item command="done">看完</el-dropdown-item>
+              <el-dropdown-item v-if="userAnimeStore.current" divided command="cancel">
+                取消追番
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <button
           class="player-pane__source-btn"
           :disabled="!danmakuItems.length"
@@ -93,6 +118,9 @@
 <script setup lang="ts">
 import { useRoomStore } from '@/stores/modules/room'
 import { useHomeStore } from '@/stores/modules/home'
+import { useUserAnimeStore } from '@/stores/modules/userAnime'
+import type { UserAnimeStatus } from '@/api/types'
+import { track } from '@/utils/track'
 import {
   buildHlsPlaylistUrl,
   buildPlaybackStreamUrl,
@@ -113,6 +141,42 @@ import DanmakuList from '@/components/Player/DanmakuList.vue'
 
 const roomStore = useRoomStore()
 const homeStore = useHomeStore()
+const userAnimeStore = useUserAnimeStore()
+const collectSaving = ref(false)
+
+const collectBtnText = computed(() => {
+  const cur = userAnimeStore.current
+  return cur ? userAnimeStore.labelOf(cur.status) : '追番'
+})
+
+async function onCollectCommand(cmd: string) {
+  const aid = bangumiId.value
+  if (!aid || collectSaving.value) return
+  collectSaving.value = true
+  try {
+    if (cmd === 'cancel') {
+      await userAnimeStore.cancel(aid)
+      track('room.collect.change', { id: aid, status: 'cancel' })
+      ElNotification({ type: 'success', title: '已取消追番' })
+      return
+    }
+    const status = cmd as UserAnimeStatus
+    const d = homeStore.animeDetail
+    await userAnimeStore.setStatus({
+      bangumi_id: aid,
+      status,
+      title: d?.name,
+      name_cn: d?.name_cn,
+      cover: d?.images?.large || d?.images?.common,
+      total_episodes: d?.eps || episodeList.value.length || 0,
+      watched_episode: currentEpisodeSort.value || 0,
+    })
+    track('room.collect.change', { id: aid, status })
+    ElNotification({ type: 'success', title: `已标记为${userAnimeStore.labelOf(status)}` })
+  } finally {
+    collectSaving.value = false
+  }
+}
 
 const playerRef = ref<InstanceType<typeof AnimePlayer> | null>(null)
 
@@ -468,6 +532,11 @@ onBeforeUnmount(() => {
       background: rgba(104, 198, 189, 0.2);
       border-color: var(--primary-color);
       box-shadow: 0 0 8px rgba(104, 198, 189, 0.25);
+    }
+
+    &.is-active {
+      background: rgba(104, 198, 189, 0.22);
+      border-color: var(--primary-color);
     }
   }
 

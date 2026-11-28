@@ -146,10 +146,18 @@ Commit 前缀：`🌟feat` `🐛fix` `📝docs` `💎style` `🌠refactor` `🚀
 | 22 | P1 | 修「下载前就判定不能播 / 下载完也不能播」→ 边下边播 | ✅ 2026-10-30 | ① `create()` 不再同步等 metadata（超时不再是 400）；② qB 加种幂等 + 只下选中文件 + 顺序下载；③ 出流按「已下载字节」裁剪 Range，不足返回 503；④ **`local_path` 曾被写成种子目录**（多文件种子 `content_path` 是目录）→ 下载完也播不了；⑤ mkv/HEVC 用 ffmpeg 转 HLS 分片（真实时长 + 可拖动）；⑥ 前端缓冲自动重试。见 §4 |
 | 24 | P2 | 字幕字号可调（ASS 特效暂不做） | ✅ 2026-10-31 | `AnimePlayer` 用 `video::cue` 动态规则给 80/100/130/160% 四档，localStorage 持久化；ASS 特效（描边/字体/定位）需要 JASSUB 或服务端烧录，方案已写进 `playback-architecture.md`，未实现 |
 | 23 | P2 | 内嵌字幕显示（ASS→VTT） | ✅ 2026-10-30 | `GET .../subtitles` + `.../subtitle/:track.vtt`；ASS 只保留对白；双语同刻 cue 合并成一条多行；前端 `AnimePlayer` 单选轨道下拉。**外挂字幕文件仍不下载**（用户明确只做内嵌） |
+| 25 | P1 | 方案 B：AI + 放映室产品闭环（放映大厅 / AI 卡片一键看与追番 / 房内追番自动流转） | ✅ 2026-11-28 | 新增 `GET /api/rooms/public` 与 `/rooms` 放映大厅、首页「正在放映」横滑条；AI 卡片支持「一起看」一键建房与「+ 想看 / 状态切换」；放映室内同步追番与自动流转 `wish → watching → done`。见 §4 |
 
 ---
 
 ## 4. 修复记录
+
+### 2026-11-28 · 方案 B · AI + 放映室产品闭环
+
+- **公开放映室大厅（`/rooms` + 首页「正在放映」）**：`Group` 实体补充 `cover` 字段（同步 `docs/schema.sql`；**生产库升级需执行 `ALTER TABLE \`group\` ADD COLUMN \`cover\` varchar(512) DEFAULT NULL;`**）；`RoomController` 新增公开接口 `GET /api/rooms/public?limit=&q=`（仅返回 `anime_id > 0` 且 `is_public = 1` 的公开放映室，私人点播室永不露出，只查房主公开字段）；前端新增 `RoomLobby.vue`（`/rooms`）、侧边栏「放映大厅」入口及首页 `LiveRooms.vue`（「正在放映」横滑条，0 房间自动隐藏）。
+- **AI 推荐卡片快捷操作**：抽取公共组合逻辑 `useWatchRoom` 统一进房/建房流程；`AiAnimeCard.vue` 新增「一起看」一键建房（直建直跳 `/room/:seasonId`）与「+ 想看 / 状态下拉切换」；`userAnime` store 新增独立于个人中心筛选列表的全局 `itemsById` 索引并在登出时自动清空；`Ai.vue` 与 `AiFab.vue` 进入后预热追番状态，跳转页面时悬浮抽屉自动收起。
+- **放映室 & 个人追番观看闭环**：`UserAnimeService.update` 在未显式传 `status` 且上报 `watched_episode > 0` 时自动将 `wish` 推进为 `watching`、达到 `total_episodes` 时推进为 `done`（进度单调递增不回退）；`Room.vue` 切集上报进度并同步刷新 store，`PlayerPane.vue` 新增「追番」状态下拉，`User.vue`「我的追番」卡片新增「继续看 / 一起看」按钮。
+- **验证**：前端 `pnpm build && pnpm lint` 全绿；后端 `tsc --noEmit` / `nest build` / `eslint`（0 error）/ `prettier --check` 全绿；后端真实启动路由映射正常，`plan-b-e2e.mjs` 15/15 全绿（公开大厅权限、私人点播室隔离、LIKE 通配符转义、追番 `wish → watching → done` 流转及不回退）；回归 `scripts/auth-e2e.mjs` 23/24 通过（唯一失败项为既有未改动接口 `GET /api/user/:id` 未挂 `AuthGuard('jwt')`）；浏览器端到端实测通过（`/rooms` 未登录跳转与登录回跳、首页「正在放映」、`PlayerPane` 房内追番持久化、AI 卡片「+ 想看」与「一起看」直进放映室、0 控制台/未捕获异常）。
 
 ### 2026-11-28 · 方案 A 快速收口（邀请回跳 / 系统配置热改 / 聊天媒体清理 / build 修复 / RAG 权重与评测集）
 

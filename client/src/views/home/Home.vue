@@ -1,6 +1,7 @@
 <template>
   <div id="home" class="page">
     <RecentPlay v-if="recentList.length" :list="recentList" />
+    <LiveRooms v-if="liveRooms.length" :list="liveRooms" />
     <HomeList title="热门推荐" :list-data="hots" :loading="hotsLoading" />
     <WeeklyTimeline :calendar-data="calendar" :loading="calendarLoading" />
     <HomeList title="最近更新" :list-data="latest" :loading="calendarLoading" />
@@ -12,7 +13,9 @@ import { useHomeStore } from '@/stores/modules/home'
 import HomeList from './components/HomeList.vue'
 import WeeklyTimeline from './components/WeeklyTimeline.vue'
 import RecentPlay from './components/RecentPlay.vue'
+import LiveRooms from './components/LiveRooms.vue'
 import { getPlayHistory } from '@/utils/play-history'
+import { listPublicRooms, type PublicRoomItem } from '@/api/room'
 
 const homeStore = useHomeStore()
 homeStore.homeDataAction()
@@ -23,6 +26,17 @@ const calendar = computed(() => homeStore.calendar)
 const hotsLoading = computed(() => homeStore.hotsLoading)
 const calendarLoading = computed(() => homeStore.calendarLoading)
 const recentList = ref(getPlayHistory())
+const liveRooms = ref<PublicRoomItem[]>([])
+
+onMounted(() => {
+  void listPublicRooms({ limit: 10 })
+    .then((rows) => {
+      liveRooms.value = rows || []
+    })
+    .catch(() => {
+      liveRooms.value = []
+    })
+})
 </script>
 
 <style scoped lang="less">

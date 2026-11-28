@@ -14,6 +14,9 @@ export class Group {
   @Column()
   group_name: string;
 
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  cover: string | null;
+
   @Column({ default: '文明交流' })
   notice: string;
 

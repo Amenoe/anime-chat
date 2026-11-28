@@ -31,10 +31,18 @@ export function updateUserAnime(
  * **静默**（X-Silent）：这部没收藏时 PATCH 会 404，那是正常情况而不是错误 ——
  * 每次点集都弹一个红色提示会让人以为坏了。
  */
-export function reportWatchedEpisode(bangumiId: number, watched_episode: number) {
+export function reportWatchedEpisode(
+  bangumiId: number,
+  watched_episode: number,
+  total_episodes?: number,
+) {
+  const data: { watched_episode: number; total_episodes?: number } = { watched_episode }
+  if (typeof total_episodes === 'number' && total_episodes > 0) {
+    data.total_episodes = total_episodes
+  }
   return request.patch<IUserAnime>({
     url: `/user-anime/${bangumiId}`,
-    data: { watched_episode },
+    data,
     headers: { 'X-Silent': '1' },
   })
 }

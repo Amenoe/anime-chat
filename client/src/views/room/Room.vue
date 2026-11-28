@@ -36,6 +36,7 @@
 import { useRoomStore } from '@/stores/modules/room'
 import { useHomeStore } from '@/stores/modules/home'
 import { useLoginStore } from '@/stores/modules/login'
+import { useUserAnimeStore } from '@/stores/modules/userAnime'
 import PlayerPane from '@/components/Room/PlayerPane.vue'
 import ChatPane from '@/components/Room/ChatPane.vue'
 import PlaylistPane from '@/components/Room/PlaylistPane.vue'
@@ -46,6 +47,7 @@ const router = useRouter()
 const roomStore = useRoomStore()
 const homeStore = useHomeStore()
 const loginStore = useLoginStore()
+const userAnimeStore = useUserAnimeStore()
 
 const activeTab = ref<'chat' | 'playlist'>('chat')
 
@@ -71,7 +73,12 @@ onMounted(async () => {
   try {
     const data = await roomStore.joinRoom({ seasonId })
     if (data.group?.anime_id) {
-      await homeStore.detailDataAction(data.group.anime_id)
+      await Promise.all([
+        homeStore.detailDataAction(data.group.anime_id),
+        userAnimeStore.fetchOne(data.group.anime_id).catch(() => {
+          userAnimeStore.current = null
+        }),
+      ])
     }
   } catch (err: any) {
     ElNotification({
@@ -92,25 +99,40 @@ watch(group, (val) => {
 })
 
 /**
- * 放映室里看到第几集，也写进自己的追番进度。
+ * 放映室里看到第几集，也写进自己的追番进度，并同步刷新在看/看完状态。
  *
- * 监听的是 `playback_state.episode_sort` —— 它由 socket 广播：
- * 房主切集时所有 viewer 都会收到，所以**每个人**的追番都会跟着更新，
- * 而不是只有动手切集的那个人。
+ * 监听的是 `playback_state.episode_sort`（以及后续补齐的总集数）—— 房主切集时所有 viewer
+ * 都会收到广播，所以**每个人**的追番都会跟着更新，而不是只有动手切集的那个人。
  *
  * 失败静默（没追这部时服务端 404，拦截器按 X-Silent 跳过提示）。
  */
+let lastReportedKey = ''
+
 watch(
-  () => roomStore.playbackState?.episode_sort,
-  (sort) => {
+  () =>
+    [
+      roomStore.playbackState?.episode_sort,
+      homeStore.animeDetail?.eps || homeStore.episodes.length,
+    ] as const,
+  ([sort, totalEps]) => {
     if (!sort || sort <= 0) return
     const animeId = group.value?.anime_id
     if (!animeId) return
-    void reportWatchedEpisode(animeId, sort).catch(() => undefined)
+    const total = totalEps && totalEps > 0 ? totalEps : 0
+    const key = `${animeId}:${sort}:${total}`
+    if (key === lastReportedKey) return
+    lastReportedKey = key
+    void reportWatchedEpisode(animeId, sort, total || undefined)
+      .then((row) => {
+        if (row) userAnimeStore.syncRow(row)
+      })
+      .catch(() => undefined)
   },
+  { immediate: true },
 )
 
 onBeforeUnmount(() => {
+  userAnimeStore.current = null
   roomStore.leaveRoom()
 })
 </script>

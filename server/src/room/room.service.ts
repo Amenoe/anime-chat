@@ -8,8 +8,10 @@ import { Repository } from 'typeorm';
 import { Group } from '../group/entities/group.entity';
 import { GroupMessage } from '../group/entities/group_message.entity';
 import { GroupUserMap } from '../group/entities/group_user_map.entity';
+import { User } from '../user/entities/user.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { generateSeasonId } from '../utils/id';
+import { clampLimit, escapeLike } from '../core/utils/sql';
 
 export interface PlaybackStateView {
   group_id: string;
@@ -25,6 +27,22 @@ export interface PlaybackStateView {
   host_user_id: string;
   server_time: number;
   updated_at: Date | null;
+}
+
+export interface PublicRoomView {
+  group_id: string;
+  season_id: string;
+  anime_id: number;
+  group_name: string;
+  cover: string | null;
+  playback_status: string;
+  playback_episode_sort: number | null;
+  playback_title: string;
+  host_user_id: string;
+  host_nickname: string;
+  host_avatar: string;
+  online_count: number;
+  create_time: string;
 }
 
 /**
@@ -44,6 +62,8 @@ export class RoomService {
     private readonly groupMessageRepository: Repository<GroupMessage>,
     @InjectRepository(GroupUserMap)
     private readonly groupUserMapRepository: Repository<GroupUserMap>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {}
 
   /** 新建一个点播室（房主 = 创建者，房间 key 随机、只能靠邀请链接进） */
@@ -76,12 +96,104 @@ export class RoomService {
         (dto.episode_sort != null
           ? `番剧 #${dto.anime_id} 第 ${dto.episode_sort} 话`
           : `番剧 #${dto.anime_id}`),
+      cover: dto.cover?.trim() || null,
       playback_episode_id: dto.episode_id ?? null,
       playback_episode_sort: dto.episode_sort ?? null,
       playback_status: 'idle',
       create_time: String(Date.now()),
     });
     return this.groupRepository.save(group);
+  }
+
+  /**
+   * 公开放映室大厅列表：
+   * - 仅返回绑定番剧（`anime_id > 0`）且公开（`is_public = 1`）的房间；私人点播室永不露出
+   * - 按「在线人数 → 正在播放优先 → 创建时间倒序」排序，支持按房间名/当前播放标题筛选
+   */
+  async listPublic(limit = 20, keyword?: string): Promise<PublicRoomView[]> {
+    const safeLimit = clampLimit(limit, 20, 50);
+    const qb = this.groupRepository
+      .createQueryBuilder('g')
+      .where('g.anime_id > 0')
+      .andWhere('g.is_public = 1')
+      .andWhere("g.season_id IS NOT NULL AND g.season_id != ''");
+
+    const trimmed = keyword?.trim();
+    if (trimmed) {
+      const kw = `%${escapeLike(trimmed)}%`;
+      qb.andWhere(
+        "(g.group_name LIKE :kw ESCAPE '!' OR g.playback_title LIKE :kw ESCAPE '!')",
+        { kw },
+      );
+    }
+
+    const groups = await qb.getMany();
+    if (!groups.length) return [];
+
+    const groupIds = groups.map((g) => g.group_id);
+    const countRows = await this.groupUserMapRepository
+      .createQueryBuilder('m')
+      .select('m.group_id', 'group_id')
+      .addSelect('COUNT(DISTINCT m.user_id)', 'cnt')
+      .where('m.group_id IN (:...groupIds)', { groupIds })
+      .groupBy('m.group_id')
+      .getRawMany<{ group_id: string; cnt: string }>();
+
+    const onlineCountMap = new Map<string, number>();
+    for (const row of countRows) {
+      onlineCountMap.set(row.group_id, Number(row.cnt) || 0);
+    }
+
+    const hostIds = Array.from(
+      new Set(groups.map((g) => g.host_user_id).filter(Boolean)),
+    );
+    const hostMap = new Map<string, { nickname: string; avatar: string }>();
+    if (hostIds.length) {
+      const hosts = await this.userRepository
+        .createQueryBuilder('u')
+        .select(['u.user_id', 'u.nickname', 'u.avatar'])
+        .where('u.user_id IN (:...hostIds)', { hostIds })
+        .getMany();
+      for (const h of hosts) {
+        hostMap.set(h.user_id, {
+          nickname: h.nickname || '用户',
+          avatar: h.avatar || '',
+        });
+      }
+    }
+
+    const views: PublicRoomView[] = groups.map((g) => {
+      const host = hostMap.get(g.host_user_id);
+      return {
+        group_id: g.group_id,
+        season_id: g.season_id,
+        anime_id: g.anime_id,
+        group_name: g.group_name,
+        cover: g.cover ?? null,
+        playback_status: g.playback_status,
+        playback_episode_sort: g.playback_episode_sort,
+        playback_title: g.playback_title,
+        host_user_id: g.host_user_id,
+        host_nickname: host?.nickname || '房主',
+        host_avatar: host?.avatar || '',
+        online_count: onlineCountMap.get(g.group_id) ?? 0,
+        create_time: g.create_time,
+      };
+    });
+
+    views.sort((a, b) => {
+      if (b.online_count !== a.online_count) {
+        return b.online_count - a.online_count;
+      }
+      const aPlaying = a.playback_status === 'playing' ? 1 : 0;
+      const bPlaying = b.playback_status === 'playing' ? 1 : 0;
+      if (bPlaying !== aPlaying) {
+        return bPlaying - aPlaying;
+      }
+      return (Number(b.create_time) || 0) - (Number(a.create_time) || 0);
+    });
+
+    return views.slice(0, safeLimit);
   }
 
   async listByAnime(animeId: number, episodeSort?: number): Promise<Group[]> {

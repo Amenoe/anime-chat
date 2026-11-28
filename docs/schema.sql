@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS `group` (
   `user_id` varchar(255) NOT NULL DEFAULT 'admin',
   `anime_id` int NOT NULL,
   `group_name` varchar(255) NOT NULL,
+  `cover` varchar(512) DEFAULT NULL,
   `notice` varchar(255) NOT NULL DEFAULT '文明交流',
   `create_time` varchar(255) NOT NULL,
   `season_id` varchar(32) NOT NULL,

@@ -159,8 +159,7 @@ import { useHomeStore } from '@/stores/modules/home'
 import { useLoginStore } from '@/stores/modules/login'
 import { useUserAnimeStore } from '@/stores/modules/userAnime'
 import type { UserAnimeStatus } from '@/api/types'
-import { listRooms, createRoom } from '@/api/room'
-import { appConfirm } from '@/composables/useConfirm'
+import { useWatchRoom } from '@/composables/useWatchRoom'
 import { addPlayHistory } from '@/utils/play-history'
 import { bangumiOriginal } from '@/utils/bangumi-image'
 
@@ -235,48 +234,17 @@ const ensureLogin = () => {
   return true
 }
 
-const roomLoading = ref(false)
+const { enterOrCreateRoom: openOrCreateWatchRoom } = useWatchRoom()
 
 async function enterOrCreateRoom(sort?: number) {
-  if (!ensureLogin()) return
-  if (roomLoading.value) return
-  roomLoading.value = true
-  try {
-    const allRooms = await listRooms({ anime_id })
-    const rooms = allRooms.filter((r: any) => r.season_id)
-
-    if (rooms.length > 0) {
-      const room = rooms[0]
-      const epInfo = room.playback_episode_sort ? ` · 当前第${room.playback_episode_sort}话` : ''
-      const ok = await appConfirm({
-        title: '已有放映室',
-        message: `${room.group_name}${epInfo}\n是否进入？`,
-        confirmText: '进入',
-        cancelText: '取消',
-      })
-      if (!ok) return
-      router.push(`/room/${room.season_id}`)
-    } else {
-      const ep = sort != null ? episodes.value.find((e) => e.sort === sort) : undefined
-      const label = sort != null ? ` 第${sort}话` : ''
-      const ok = await appConfirm({
-        title: '创建放映室',
-        message: `是否为「${displayName.value}${label}」创建放映室？`,
-        confirmText: '创建',
-        cancelText: '取消',
-      })
-      if (!ok) return
-      const room = await createRoom({
-        anime_id,
-        episode_id: ep?.id,
-        episode_sort: sort,
-        group_name: `${displayName.value}${label}`,
-      })
-      router.push(`/room/${room.season_id}`)
-    }
-  } finally {
-    roomLoading.value = false
-  }
+  const ep = sort != null ? episodes.value.find((e) => e.sort === sort) : undefined
+  await openOrCreateWatchRoom({
+    animeId: anime_id,
+    title: displayName.value || `番剧 #${anime_id}`,
+    cover: detailData.value?.images?.common || detailData.value?.images?.large,
+    episodeId: ep?.id,
+    episodeSort: sort,
+  })
 }
 
 function onEpClick(sort: number) {

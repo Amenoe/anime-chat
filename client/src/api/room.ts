@@ -5,6 +5,7 @@ export interface RoomGroup {
   user_id: string
   anime_id: number
   group_name: string
+  cover?: string | null
   notice: string
   create_time: string
   season_id: string
@@ -22,6 +23,29 @@ export interface RoomGroup {
   playback_title: string
 }
 
+export interface PublicRoomItem {
+  group_id: string
+  season_id: string
+  anime_id: number
+  group_name: string
+  cover: string | null
+  playback_status: string
+  playback_episode_sort: number | null
+  playback_title: string
+  host_user_id: string
+  host_nickname: string
+  host_avatar: string
+  online_count: number
+  create_time: string
+}
+
+export function listPublicRooms(params?: { limit?: number; q?: string }) {
+  return request.get<PublicRoomItem[]>({
+    url: '/rooms/public',
+    params,
+  })
+}
+
 export function listRooms(params: { anime_id: number; episode_sort?: number }) {
   return request.get<RoomGroup[]>({
     url: '/rooms',
@@ -34,6 +58,7 @@ export function createRoom(data: {
   episode_id?: number
   episode_sort?: number
   group_name?: string
+  cover?: string
 }) {
   return request.post<RoomGroup>({
     url: '/rooms',
